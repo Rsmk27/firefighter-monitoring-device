@@ -1,0 +1,304 @@
+Sustainable Firefighter Monitoring System (SFMS)
+1. Product Overview
+1.1 Purpose
+
+The Sustainable Firefighter Monitoring System (SFMS) is an IoT-based safety solution designed to continuously monitor a firefighter’s physical condition, movement, and location in real time, and present this data on a centralized web dashboard for commanders or monitoring personnel.
+
+The system aims to:
+
+Detect emergencies automatically (no movement, high temperature)
+
+Allow manual SOS signaling
+
+Track live location
+
+Log historical data for analysis
+
+Operate sustainably using battery and solar charging
+
+1.2 Target Users
+
+Firefighters (wearable device users)
+
+Fire commanders / control room operators (web dashboard users)
+
+Project evaluators / researchers
+
+2. System Architecture Overview
+2.1 High-Level Architecture
+[ Firefighter Wearable Device ]
+   - Sensors
+   - ESP32 Controller
+   - Power System
+           |
+           |  Wi-Fi (HTTP / JSON)
+           v
+[ Backend Server ]
+   - REST API
+   - Database
+           |
+           v
+[ Web Dashboard ]
+   - Live Monitoring
+   - Alerts
+   - History & Map
+
+3. Device (Hardware + Firmware) Requirements
+3.1 Hardware Components
+
+ESP32 microcontroller (Wi-Fi enabled)
+
+MPU-6050 (movement & fall detection)
+
+DHT11 (ambient temperature)
+
+Neo-6M GPS module
+
+Push button (manual SOS)
+
+Buzzer (local alert)
+
+Status LEDs
+
+Li-ion battery
+
+Solar panel
+
+TP4056 charging module
+
+3.2 Device Functional Requirements
+3.2.1 Sensor Data Acquisition
+
+The device shall:
+
+Read acceleration data from MPU-6050 at regular intervals
+
+Read ambient temperature from DHT11
+
+Read GPS latitude and longitude from Neo-6M
+
+Monitor SOS button state continuously
+
+3.2.2 Movement Detection Logic
+
+The system shall calculate movement magnitude from accelerometer data
+
+If no significant movement is detected for a predefined duration (e.g., 30–60 seconds), the system shall classify the state as WARNING
+
+If inactivity persists beyond a critical threshold, the system shall classify the state as EMERGENCY
+
+3.2.3 Temperature Monitoring Logic
+
+The system shall compare measured temperature against a predefined safe threshold
+
+If temperature exceeds the threshold:
+
+State shall change to WARNING
+
+If temperature continues rising or exceeds a critical limit:
+
+State shall change to EMERGENCY
+
+3.2.4 Manual SOS Logic
+
+When the SOS button is pressed:
+
+The system shall immediately override all other states
+
+State shall change to SOS
+
+Emergency alert shall be triggered locally and remotely
+
+3.2.5 Local Alerts
+
+In WARNING / EMERGENCY / SOS states:
+
+Buzzer shall activate
+
+Alert LED shall turn ON
+
+In NORMAL state:
+
+Status LED shall indicate healthy operation
+
+3.3 Device States
+State	Description
+STARTUP	Device initialization
+NORMAL	All parameters within safe limits
+WARNING	Potential danger detected
+EMERGENCY	Critical condition detected
+SOS	Manual emergency triggered
+3.4 Device-to-Server Communication
+3.4.1 Data Transmission
+
+The ESP32 shall send data to the backend server at fixed intervals (e.g., every 3–5 seconds)
+
+Data format shall be JSON over HTTP POST
+
+Example JSON Payload:
+
+{
+  "device_id": "FF_001",
+  "temperature": 42,
+  "movement": "NO_MOVEMENT",
+  "status": "EMERGENCY",
+  "latitude": 17.385,
+  "longitude": 78.486,
+  "timestamp": "2026-02-08T14:30:00"
+}
+
+4. Backend (Server + Database) Requirements
+4.1 Backend Responsibilities
+
+Receive data from ESP32 devices
+
+Validate and store incoming data
+
+Provide APIs for the web interface
+
+Maintain alert and event logs
+
+4.2 API Endpoints (Minimum)
+Method	Endpoint	Description
+POST	/api/data	Receive sensor data from device
+GET	/api/latest	Get latest device status
+GET	/api/history	Get historical records
+GET	/api/alerts	Get emergency/SOS events
+4.3 Database Requirements
+
+Store time-stamped sensor data
+
+Store emergency and SOS events separately
+
+Support retrieval of latest and historical data
+
+Example Record Structure:
+
+{
+  "device_id": "FF_001",
+  "temperature": 41,
+  "movement": "MOVING",
+  "status": "NORMAL",
+  "location": {
+    "lat": 17.385,
+    "lng": 78.486
+  },
+  "timestamp": "2026-02-08T14:25:00"
+}
+
+5. Web Interface (Dashboard) Requirements
+5.1 Core Objectives
+
+Provide real-time situational awareness
+
+Highlight emergencies clearly
+
+Display live location on a map
+
+Maintain historical records
+
+5.2 Functional Sections of the Web Interface
+5.2.1 Header Section
+
+System name (SFMS)
+
+Firefighter / Device ID
+
+Connection status (Online / Offline)
+
+Last data update time
+
+5.2.2 Status Panel
+
+Current firefighter status:
+
+NORMAL
+
+WARNING
+
+EMERGENCY
+
+SOS
+
+Color-coded indicators (Green / Yellow / Red)
+
+5.2.3 Live Sensor Data Cards
+
+Temperature (°C)
+
+Movement state
+
+GPS availability
+
+Battery status (optional)
+
+5.2.4 Live Location Map
+
+Interactive map view
+
+Real-time GPS marker
+
+Automatic updates
+
+Display last known location if signal is lost
+
+5.2.5 Alert & Event Log
+
+List of warning, emergency, and SOS events
+
+Timestamped entries
+
+Highlight critical alerts
+
+5.2.6 Historical Data View
+
+Scrollable or filterable logs
+
+Used for post-incident analysis
+
+6. Non-Functional Requirements
+6.1 Performance
+
+Dashboard updates every 2–5 seconds
+
+API response time < 1 second (prototype target)
+
+6.2 Reliability
+
+Device must continue local alerts even if Wi-Fi fails
+
+Last known GPS location must be retained
+
+6.3 Scalability (Future Scope)
+
+Support multiple firefighters
+
+User authentication
+
+Advanced analytics and charts
+
+7. Assumptions & Constraints
+
+Wi-Fi connectivity may be intermittent
+
+GPS accuracy may degrade indoors
+
+DHT11 is used only for prototype validation
+
+Solar panel acts as supplementary power
+
+8. Success Criteria
+
+Real-time data visible on dashboard
+
+Emergency states correctly detected and displayed
+
+Live GPS tracking functional
+
+Data successfully stored in database
+
+System demonstrates end-to-end integration
+
+9. One-Line System Summary (Strong)
+
+SFMS is a scalable IoT-based firefighter safety system that integrates wearable sensing, real-time monitoring, live location tracking, and cloud-backed visualization to improve emergency response and situational awareness.
