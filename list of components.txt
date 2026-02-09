@@ -1,0 +1,19 @@
+1.MPU-6050 3-Axis Accelerometer
+2.DHT 11
+3.Neo-6M GPS module
+4. push button
+5. ESP 32
+6. Buzzer
+7. Battery
+8. Solar panel
+9. TP-4056 charge controller
+10. indicating LED's
+
+Communication Reliability Backup
+Wi-Fi alone is risky in fire zones.
+Minimum recommendation:
+Bluetooth (ESP32 already has it)
+For nearby commander / gateway device
+Advanced (future upgrade):
+LoRa / GSM (for outdoor or long-range deployments)
+
