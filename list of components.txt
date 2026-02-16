@@ -7,7 +7,7 @@
 7. Battery
 8. Solar panel
 9. TP-4056 charge controller
-10. indicating LED's
+10. RGB led
 
 Communication Reliability Backup
 Wi-Fi alone is risky in fire zones.
