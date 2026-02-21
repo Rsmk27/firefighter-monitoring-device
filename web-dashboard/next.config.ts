@@ -1,7 +1,7 @@
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  // Force a rebuild by changing this config slightly
-  reactStrictMode: true,
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  reactStrictMode: false, // Prevent double-init of MapLibre GL WebGL context
 };
 
 export default nextConfig;

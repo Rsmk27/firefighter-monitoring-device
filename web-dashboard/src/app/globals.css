@@ -1,25 +1,14 @@
 @import "tailwindcss";
 
-:root {
-  --foreground-rgb: 15, 23, 42;
-  /* slate-900 */
-  --background-start-rgb: 248, 250, 252;
-  /* slate-50 */
-  --background-end-rgb: 255, 255, 255;
-  /* white */
-}
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))) rgb(var(--background-start-rgb));
+  color: rgb(15, 23, 42);
+  background-color: rgb(248, 250, 252);
   font-feature-settings: "rlig" 1, "calt" 1;
-  /* Optimize font rendering */
   -webkit-font-smoothing: antialiased;
 }
 
-/* Custom Scrollbar for Light Theme */
+/* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -27,29 +16,25 @@ body {
 
 ::-webkit-scrollbar-track {
   background: rgba(203, 213, 225, 0.5);
-  /* slate-300/50 */
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
   background: rgba(148, 163, 184, 0.8);
-  /* slate-400/80 */
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(100, 116, 139, 1);
-  /* slate-500 */
 }
 
 .custom-scrollbar::-webkit-scrollbar {
   width: 4px;
 }
 
-/* Leaflet Map Styling Override */
+/* Leaflet */
 .leaflet-container {
   background: #f1f5f9 !important;
-  /* slate-100 */
   border-radius: 1rem;
   z-index: 0;
 }
@@ -64,4 +49,21 @@ body {
 
 .leaflet-popup-tip {
   background: rgba(255, 255, 255, 0.95);
+}
+
+/* Battery drain blink for critical level */
+@keyframes batteryDrain {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.battery-critical {
+  animation: batteryDrain 1s ease-in-out infinite;
 }
