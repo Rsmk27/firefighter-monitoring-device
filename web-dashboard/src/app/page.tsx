@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { collection, doc, onSnapshot, query, orderBy, limit, where } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { ref, onValue } from 'firebase/database';
+import { db, rtdb } from '@/lib/firebase';
 import MapWrapper from '@/components/MapWrapper';
 import AnalyticsPanel from '@/components/AnalyticsPanel';
 import {
@@ -111,7 +112,7 @@ export default function Dashboard() {
     const [alerts, setAlerts] = useState<AlertLog[]>([]);
     const [isClient, setIsClient] = useState(false);
     const [lastHeartbeat, setLastHeartbeat] = useState<Date | null>(null);
-    const [useMock, setUseMock] = useState(true);
+    const [useMock, setUseMock] = useState(false);
     const [trail, setTrail] = useState<[number, number][]>([]);
 
     // Analytics state
@@ -202,35 +203,68 @@ export default function Dashboard() {
             return () => clearInterval(loop);
         }
 
-        // Real Firebase
-        const unsubDevice = onSnapshot(doc(db, 'devices', DEVICE_ID), snap => {
+        // Real Firebase via RTDB
+        const deviceRef = ref(rtdb, `firefighters/${DEVICE_ID}`);
+        let lastStatus = 'NORMAL';
+
+        const unsubDevice = onValue(deviceRef, snap => {
             if (snap.exists()) {
-                const data = snap.data() as DeviceData;
-                if (data.status !== 'NORMAL' && data.status !== 'OFFLINE') announceStatus(data.status);
+                const rtdbData = snap.val();
+
+                let mappedStatus = 'NORMAL';
+                const s = rtdbData.status || '';
+                if (s.includes('EMERGENCY')) mappedStatus = 'EMERGENCY';
+                else if (s.includes('WARNING')) mappedStatus = 'WARNING';
+                else if (s.includes('SOS')) mappedStatus = 'SOS';
+                else if (s.includes('NORMAL')) mappedStatus = 'NORMAL';
+
+                const data: DeviceData = {
+                    device_id: DEVICE_ID,
+                    temperature: rtdbData.temperature || 0,
+                    movement: rtdbData.movement === 'MOVING' ? 'MOVING' : 'STILL',
+                    status: mappedStatus as DeviceState,
+                    battery: 100, // Not provided by current ESP code
+                    signal: rtdbData.gps_status === 'OK' ? 100 : rtdbData.gps_status === 'NO_SIGNAL' ? 20 : 0,
+                    packetLoss: rtdbData.system_status === 'OK' ? 0 : 10,
+                    latency: 50,
+                    location: {
+                        lat: rtdbData.latitude || 0,
+                        lng: rtdbData.longitude || 0
+                    },
+                    lastSeen: { toDate: () => new Date() } // Best effort local timestamp
+                };
+
+                if (mappedStatus !== 'NORMAL' && mappedStatus !== 'OFFLINE') announceStatus(mappedStatus);
                 setDeviceData(data);
-                pushAnalytics(data.temperature, data.movement, data.status);
-                if (data.lastSeen) setLastHeartbeat(data.lastSeen.toDate());
-                if (data.location) setTrail(prev => {
-                    const last = prev[prev.length - 1];
-                    if (!last || Math.abs(last[0] - data.location.lat) > 0.0001 || Math.abs(last[1] - data.location.lng) > 0.0001)
-                        return [...prev, [data.location.lat, data.location.lng]];
-                    return prev;
-                });
+                pushAnalytics(data.temperature, data.movement, mappedStatus);
+                setLastHeartbeat(new Date());
+
+                if (data.location && (data.location.lat !== 0 || data.location.lng !== 0)) {
+                    setTrail(prev => {
+                        const last = prev[prev.length - 1];
+                        if (!last || Math.abs(last[0] - data.location.lat) > 0.0001 || Math.abs(last[1] - data.location.lng) > 0.0001)
+                            return [...prev.slice(-50), [data.location.lat, data.location.lng]];
+                        return prev;
+                    });
+                }
+
+                // Generate local alert history since RTDB doesn't store it in this setup
+                if (mappedStatus !== lastStatus) {
+                    if (['WARNING', 'EMERGENCY', 'SOS'].includes(mappedStatus)) {
+                        const msg = mappedStatus === 'EMERGENCY' ? (rtdbData.status === 'EMERGENCY (HIGH TEMP)' ? 'Critical High Temperature' : 'Emergency State Detected') : 'Status Change Detected';
+                        setAlerts(prev => [{
+                            id: `new-${Date.now()}`,
+                            timestamp: { toDate: () => new Date() },
+                            status: mappedStatus as DeviceState,
+                            message: msg,
+                        }, ...prev.slice(0, 19)]);
+                    }
+                    lastStatus = mappedStatus;
+                }
             }
         });
 
-        const alertsQuery = query(
-            collection(db, 'readings'),
-            where('device_id', '==', DEVICE_ID),
-            where('status', 'in', ['WARNING', 'EMERGENCY', 'SOS']),
-            orderBy('timestamp', 'desc'),
-            limit(20)
-        );
-        const unsubAlerts = onSnapshot(alertsQuery, snap => {
-            setAlerts(snap.docs.map(d => ({ id: d.id, ...d.data(), message: `Status changed to ${d.data().status}` })) as AlertLog[]);
-        });
-
-        return () => { unsubDevice(); unsubAlerts(); };
+        return () => { unsubDevice(); };
     }, [useMock, pushAnalytics]);
 
     const isOnline = lastHeartbeat && (new Date().getTime() - lastHeartbeat.getTime() < 10000);
