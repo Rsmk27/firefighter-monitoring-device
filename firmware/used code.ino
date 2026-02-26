@@ -167,7 +167,8 @@ void loop() {
   // ================= MOVEMENT LOGIC =================
   float movement = abs(totalAcc - 1.0);
 
-  if (movement < 0.15) {
+  // Lowered threshold to 0.03 to detect small movements like breathing or shifting
+  if (movement < 0.03) {
     if (!notMoving) {
       noMoveStartTime = millis();
       notMoving = true;
@@ -261,5 +262,5 @@ void loop() {
   // ================= FIREBASE =================
   sendToFirebase(temperature, latitude, longitude);
 
-  delay(5000);
+  // delay(5000); // Removed blocking delay so GPS and MPU can read continuously
 }
