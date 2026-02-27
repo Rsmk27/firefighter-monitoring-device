@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { collection, doc, onSnapshot, query, orderBy, limit, where } from 'firebase/firestore';
 import { ref, onValue } from 'firebase/database';
 import { db, rtdb } from '@/lib/firebase';
@@ -114,6 +114,12 @@ export default function Dashboard() {
     const [lastHeartbeat, setLastHeartbeat] = useState<Date | null>(null);
     const [useMock, setUseMock] = useState(false);
     const [trail, setTrail] = useState<[number, number][]>([]);
+    const [secondsOffline, setSecondsOffline] = useState<number>(0);
+
+    // Holds the last successfully received Firebase data — never cleared on disconnect
+    const lastKnownData = useRef<DeviceData | null>(null);
+    // Track when the component first mounted to detect never-connected timeout
+    const mountTime = useRef<Date>(new Date());
 
     // Analytics state
     const [tempHistory, setTempHistory] = useState<{ time: string; temp: number }[]>([]);
@@ -236,8 +242,10 @@ export default function Dashboard() {
 
                 if (mappedStatus !== 'NORMAL' && mappedStatus !== 'OFFLINE') announceStatus(mappedStatus);
                 setDeviceData(data);
+                lastKnownData.current = data; // Always cache last good data
                 pushAnalytics(data.temperature, data.movement, mappedStatus);
                 setLastHeartbeat(new Date());
+                setSecondsOffline(0);
 
                 if (data.location && (data.location.lat !== 0 || data.location.lng !== 0)) {
                     setTrail(prev => {
@@ -267,10 +275,38 @@ export default function Dashboard() {
         return () => { unsubDevice(); };
     }, [useMock, pushAnalytics]);
 
-    const isOnline = lastHeartbeat && (new Date().getTime() - lastHeartbeat.getTime() < 10000);
+    // Tick a counter every second when device is offline so UI stays fresh
+    useEffect(() => {
+        if (useMock) return;
+        const tick = setInterval(() => {
+            const now = Date.now();
+            if (lastHeartbeat) {
+                const secs = Math.floor((now - lastHeartbeat.getTime()) / 1000);
+                if (secs >= 30) setSecondsOffline(secs);
+                else setSecondsOffline(0);
+            } else {
+                // Never received any data — count from mount time
+                const secs = Math.floor((now - mountTime.current.getTime()) / 1000);
+                if (secs >= 30) setSecondsOffline(secs);
+            }
+        }, 1000);
+        return () => clearInterval(tick);
+    }, [lastHeartbeat, useMock]);
+
+    const isOnline = !useMock && lastHeartbeat !== null && (new Date().getTime() - lastHeartbeat.getTime() < 30000);
+    // Offline = no live data (either never received, or timed out after 30s)
+    const isDeviceOffline = !useMock && !isOnline && secondsOffline >= 30;
+
+    // When offline, use the last known cached data so values don't go blank
+    const displayData = useMemo(
+        () => (isDeviceOffline && lastKnownData.current ? lastKnownData.current : deviceData),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [deviceData, isDeviceOffline, secondsOffline]
+    );
+
     const displayStatus: DeviceState = useMock
         ? (deviceData?.status || 'NORMAL')
-        : (!isOnline ? 'OFFLINE' : deviceData?.status || 'NORMAL');
+        : (isDeviceOffline ? 'OFFLINE' : deviceData?.status || 'NORMAL');
 
     // Status styles
     const getStatusStyles = (s: DeviceState) => {
@@ -296,12 +332,22 @@ export default function Dashboard() {
 
     if (!isClient) return null;
 
-    const batt = deviceData?.battery ?? 100;
-    const sig = deviceData?.signal ?? 100;
-    const sigQ = signalQuality(sig);
+    const batt = isDeviceOffline ? null : (displayData?.battery ?? 100);
+    const sig = isDeviceOffline ? null : (displayData?.signal ?? 100);
+    const sigQ = sig !== null ? signalQuality(sig) : { label: 'Unknown', color: 'text-slate-400' };
 
     return (
-        <main className="h-screen w-full bg-slate-50 text-slate-900 font-sans selection:bg-indigo-500/30 overflow-hidden flex flex-col">
+        <main className="min-h-screen w-full bg-slate-50 text-slate-900 font-sans selection:bg-indigo-500/30 flex flex-col">
+
+            {/* ── OFFLINE BANNER ───────────────────────────────────────────── */}
+            {isDeviceOffline && (
+                <div className="flex-none bg-rose-600 text-white text-xs font-bold px-4 py-1.5 flex items-center justify-center gap-2 z-30">
+                    <span className="animate-pulse">⚠</span>
+                    {lastKnownData.current
+                        ? <>Device Offline — Showing last known data <span className="font-normal opacity-80">(last update {secondsOffline}s ago)</span></>
+                        : <>Device Offline — No data received yet. Waiting for device...</>}
+                </div>
+            )}
 
             {/* Background Ambience */}
             <div className="fixed inset-0 pointer-events-none z-0">
@@ -311,98 +357,113 @@ export default function Dashboard() {
             </div>
 
             {/* ── HEADER ─────────────────────────────────────────────────────── */}
-            <header className="flex-none px-6 py-4 border-b border-slate-200 bg-white/50 backdrop-blur-md z-20 flex justify-between items-center h-16">
-                <div className="flex items-center gap-3">
-                    <div className="bg-gradient-to-br from-indigo-500 to-blue-600 p-2 rounded-xl shadow-lg shadow-indigo-500/20">
-                        <ShieldCheck className="w-5 h-5 text-white" />
+            <header className="flex-none px-4 md:px-6 py-3 border-b border-slate-200 bg-white/80 backdrop-blur-md z-20 flex justify-between items-center h-14 md:h-16 sticky top-0">
+                <div className="flex items-center gap-2 md:gap-3">
+                    <div className="bg-gradient-to-br from-indigo-500 to-blue-600 p-1.5 md:p-2 rounded-xl shadow-lg shadow-indigo-500/20">
+                        <ShieldCheck className="w-4 h-4 md:w-5 md:h-5 text-white" />
                     </div>
-                    <h1 className="text-xl font-bold text-slate-900 tracking-tight leading-none">
-                        SFMS <span className="text-slate-500 font-normal">Command Center</span>
+                    <h1 className="text-base md:text-xl font-bold text-slate-900 tracking-tight leading-none">
+                        SFMS <span className="hidden sm:inline text-slate-500 font-normal">Command Center</span>
                     </h1>
                 </div>
 
-                <div className="flex items-center gap-3">
-                    {/* Signal quality pill */}
+                <div className="flex items-center gap-2 md:gap-3">
+                    {/* Signal quality pill — desktop only */}
                     <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-slate-200 shadow-sm">
                         <Signal className={clsx('w-3.5 h-3.5', sigQ.color)} />
                         <span className={clsx('text-[10px] font-bold', sigQ.color)}>{sigQ.label}</span>
-                        <span className="text-[10px] text-slate-400">{Math.round(sig)}%</span>
+                        <span className="text-[10px] text-slate-400">
+                            {sig !== null ? `${Math.round(sig)}%` : '—'}
+                        </span>
                     </div>
 
-                    {/* Battery pill */}
-                    <div className={clsx('hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-slate-200 shadow-sm', batt < 15 && 'battery-critical')}>
-                        <span className={batteryTextColor(batt)}><BatteryIcon pct={batt} /></span>
-                        <span className={clsx('text-[10px] font-bold', batteryTextColor(batt))}>{batt}%</span>
+                    {/* Battery pill — desktop only */}
+                    <div className={clsx('hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-slate-200 shadow-sm', batt !== null && batt < 15 && 'battery-critical')}>
+                        <span className={batt !== null ? batteryTextColor(batt) : 'text-slate-400'}>
+                            {batt !== null ? <BatteryIcon pct={batt} /> : <BatteryWarning className="w-4 h-4" />}
+                        </span>
+                        <span className={clsx('text-[10px] font-bold', batt !== null ? batteryTextColor(batt) : 'text-slate-400')}>
+                            {batt !== null ? `${batt}%` : 'Unknown'}
+                        </span>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    {/* Live/Offline status */}
+                    <div className="flex items-center gap-1.5">
                         <div className={clsx('w-2 h-2 rounded-full', (isOnline || useMock) ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400')} />
                         <span className={clsx('text-xs font-bold', (isOnline || useMock) ? 'text-emerald-600' : 'text-slate-500')}>
-                            {(isOnline || useMock) ? 'LIVE FEED' : 'OFFLINE'}
+                            {(isOnline || useMock) ? 'LIVE' : 'OFFLINE'}
                         </span>
-                        <span className="text-xs text-slate-400">|</span>
-                        <span className="text-xs text-slate-500 font-mono">ID: {DEVICE_ID}</span>
+                        <span className="hidden sm:inline text-xs text-slate-400">|</span>
+                        <span className="hidden sm:inline text-xs text-slate-500 font-mono">ID: {DEVICE_ID}</span>
                     </div>
 
                     <button
                         onClick={() => setUseMock(!useMock)}
-                        className="text-xs px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors font-medium border border-indigo-200">
-                        {useMock ? 'Exit Simulation' : 'Run Simulation'}
+                        className="text-[10px] md:text-xs px-2 md:px-3 py-1 md:py-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors font-medium border border-indigo-200 whitespace-nowrap">
+                        {useMock ? 'Exit Sim' : 'Simulate'}
                     </button>
                 </div>
             </header>
 
             {/* ── MAIN CONTENT ────────────────────────────────────────────────── */}
-            <div className="flex-1 p-4 overflow-hidden z-10">
-                <div className="h-full grid grid-cols-12 gap-4">
+            <div className="flex-1 p-3 md:p-4 overflow-y-auto lg:overflow-hidden z-10">
+                <div className="h-full grid grid-cols-1 lg:grid-cols-12 gap-3 md:gap-4">
 
                     {/* ═══ COL 1: LEFT PANEL (3 cols) ══════════════════════════ */}
-                    <div className="col-span-12 lg:col-span-3 flex flex-col gap-3 h-full overflow-hidden">
+                    {/* On mobile: Status card + Battery + Sensors row shown first, Logs & Comm at bottom */}
+                    <div className="lg:col-span-3 flex flex-col gap-3 lg:h-full lg:overflow-hidden order-1">
 
                         {/* Status Card */}
                         <motion.div layout
                             className={clsx(
-                                'relative overflow-hidden rounded-3xl p-6 shadow-xl transition-all duration-500 border border-white/20 bg-gradient-to-br flex-none h-44 flex flex-col items-center justify-center text-center',
+                                'relative overflow-hidden rounded-3xl p-5 md:p-6 shadow-xl transition-all duration-500 border border-white/20 bg-gradient-to-br flex-none h-36 md:h-44 flex flex-col items-center justify-center text-center',
                                 statusStyle.gradient, statusStyle.shadow
                             )}>
                             <div className="absolute inset-0 bg-[url('/noise.png')] opacity-10 mix-blend-overlay" />
                             <div className="relative z-10 flex flex-col items-center gap-2">
-                                <div className="bg-white/20 p-3 rounded-full backdrop-blur-md border border-white/30 shadow-inner">
+                                <div className="bg-white/20 p-2 md:p-3 rounded-full backdrop-blur-md border border-white/30 shadow-inner">
                                     {getStatusIcon(displayStatus)}
                                 </div>
-                                <div className="text-2xl font-black text-white tracking-tighter drop-shadow-sm">
+                                <div className="text-xl md:text-2xl font-black text-white tracking-tighter drop-shadow-sm">
                                     {displayStatus}
                                 </div>
                             </div>
                         </motion.div>
 
                         {/* Battery Card */}
-                        <div className={clsx('bg-white border border-slate-200 rounded-2xl p-3 shadow-sm flex-none', batt < 15 && 'battery-critical')}>
+                        <div className={clsx('bg-white border border-slate-200 rounded-2xl p-3 shadow-sm flex-none', !isDeviceOffline && batt !== null && batt < 15 && 'battery-critical')}>
                             <div className="flex items-center justify-between mb-2">
                                 <div className="flex items-center gap-2">
-                                    <span className={batteryTextColor(batt)}><BatteryIcon pct={batt} /></span>
+                                    <span className={batt !== null ? batteryTextColor(batt) : 'text-slate-400'}>
+                                        {batt !== null ? <BatteryIcon pct={batt} /> : <BatteryWarning className="w-4 h-4" />}
+                                    </span>
                                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Battery</span>
                                 </div>
-                                <span className={clsx('text-sm font-black', batteryTextColor(batt))}>{batt}%</span>
+                                <span className={clsx('text-sm font-black', batt !== null ? batteryTextColor(batt) : 'text-slate-400')}>
+                                    {batt !== null ? `${batt}%` : 'Unknown'}
+                                </span>
                             </div>
                             <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                                <div className={clsx('h-full rounded-full transition-all duration-700', batteryBarColor(batt))}
-                                    style={{ width: `${batt}%` }} />
+                                <div className={clsx('h-full rounded-full transition-all duration-700', batt !== null ? batteryBarColor(batt) : 'bg-slate-300')}
+                                    style={{ width: batt !== null ? `${batt}%` : '100%', opacity: batt !== null ? 1 : 0.3 }} />
                             </div>
-                            {batt < 20 && (
+                            {batt !== null && batt < 20 && (
                                 <p className="text-[9px] text-rose-500 font-bold mt-1.5 text-center">⚠ LOW BATTERY — REPLACE SOON</p>
+                            )}
+                            {isDeviceOffline && (
+                                <p className="text-[9px] text-slate-400 font-medium mt-1.5 text-center italic">Unavailable while offline</p>
                             )}
                         </div>
 
                         {/* Sensor Row */}
                         <div className="grid grid-cols-2 gap-3 flex-none">
                             <div className="col-span-1 bg-white border border-slate-200 rounded-2xl p-3 shadow-sm flex items-center gap-2 h-14">
-                                <div className={clsx('p-1.5 rounded-lg', (deviceData?.temperature || 0) > 40 ? 'bg-rose-100 text-rose-600' : 'bg-emerald-100 text-emerald-600')}>
+                                <div className={clsx('p-1.5 rounded-lg', (displayData?.temperature || 0) > 40 ? 'bg-rose-100 text-rose-600' : 'bg-emerald-100 text-emerald-600')}>
                                     <Thermometer className="w-4 h-4" />
                                 </div>
                                 <div>
-                                    <div className="text-[9px] font-bold text-slate-500 uppercase">Temp</div>
-                                    <div className="text-sm font-bold text-slate-800">{deviceData?.temperature.toFixed(1)}°C</div>
+                                    <div className="text-[9px] font-bold text-slate-500 uppercase">Temp{isDeviceOffline && <span className="ml-1 text-amber-500">(last)</span>}</div>
+                                    <div className="text-sm font-bold text-slate-800">{displayData?.temperature?.toFixed(1) ?? '—'}°C</div>
                                 </div>
                             </div>
                             <div className="col-span-1 bg-white border border-slate-200 rounded-2xl p-3 shadow-sm flex items-center gap-2 h-14">
@@ -410,9 +471,9 @@ export default function Dashboard() {
                                     <Activity className="w-4 h-4" />
                                 </div>
                                 <div>
-                                    <div className="text-[9px] font-bold text-slate-500 uppercase">Motion</div>
+                                    <div className="text-[9px] font-bold text-slate-500 uppercase">Motion{isDeviceOffline && <span className="ml-1 text-amber-500">(last)</span>}</div>
                                     <div className="text-sm font-bold text-slate-800">
-                                        {deviceData?.movement === 'MOVING' ? 'Moving' : 'Still'}
+                                        {displayData?.movement === 'MOVING' ? 'Moving' : 'Still'}
                                     </div>
                                 </div>
                             </div>
@@ -423,6 +484,7 @@ export default function Dashboard() {
                             <div className="flex items-center gap-2 mb-1">
                                 <Signal className="w-3.5 h-3.5 text-sky-500" />
                                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Comm Reliability</span>
+                                {isDeviceOffline && <span className="ml-auto text-[9px] text-slate-400 italic">Unavailable</span>}
                             </div>
 
                             {/* Signal strength */}
@@ -431,9 +493,11 @@ export default function Dashboard() {
                                 <div className="flex items-center gap-2 flex-1">
                                     <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
                                         <div className="h-full rounded-full bg-sky-400 transition-all duration-500"
-                                            style={{ width: `${sig}%` }} />
+                                            style={{ width: isDeviceOffline ? '100%' : `${sig ?? 0}%`, opacity: isDeviceOffline ? 0.2 : 1 }} />
                                     </div>
-                                    <span className={clsx('text-[10px] font-bold w-8 text-right', sigQ.color)}>{Math.round(sig)}%</span>
+                                    <span className={clsx('text-[10px] font-bold w-12 text-right', isDeviceOffline ? 'text-slate-400' : sigQ.color)}>
+                                        {isDeviceOffline ? 'Unknown' : `${Math.round(sig ?? 0)}%`}
+                                    </span>
                                 </div>
                             </div>
 
@@ -443,11 +507,11 @@ export default function Dashboard() {
                                 <div className="flex items-center gap-2 flex-1">
                                     <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
                                         <div className="h-full rounded-full bg-rose-400 transition-all duration-500"
-                                            style={{ width: `${Math.min(100, (deviceData?.packetLoss ?? 0) * 10)}%` }} />
+                                            style={{ width: isDeviceOffline ? '100%' : `${Math.min(100, (deviceData?.packetLoss ?? 0) * 10)}%`, opacity: isDeviceOffline ? 0.2 : 1 }} />
                                     </div>
-                                    <span className={clsx('text-[10px] font-bold w-8 text-right',
-                                        (deviceData?.packetLoss ?? 0) > 5 ? 'text-rose-500' : 'text-emerald-500')}>
-                                        {(deviceData?.packetLoss ?? 0).toFixed(1)}%
+                                    <span className={clsx('text-[10px] font-bold w-12 text-right',
+                                        isDeviceOffline ? 'text-slate-400' : (deviceData?.packetLoss ?? 0) > 5 ? 'text-rose-500' : 'text-emerald-500')}>
+                                        {isDeviceOffline ? 'Unknown' : `${(deviceData?.packetLoss ?? 0).toFixed(1)}%`}
                                     </span>
                                 </div>
                             </div>
@@ -458,18 +522,18 @@ export default function Dashboard() {
                                 <div className="flex items-center gap-2 flex-1">
                                     <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
                                         <div className="h-full rounded-full bg-violet-400 transition-all duration-500"
-                                            style={{ width: `${Math.min(100, (deviceData?.latency ?? 0) / 5)}%` }} />
+                                            style={{ width: isDeviceOffline ? '100%' : `${Math.min(100, (deviceData?.latency ?? 0) / 5)}%`, opacity: isDeviceOffline ? 0.2 : 1 }} />
                                     </div>
-                                    <span className={clsx('text-[10px] font-bold w-8 text-right',
-                                        (deviceData?.latency ?? 0) > 200 ? 'text-rose-500' : 'text-violet-500')}>
-                                        {Math.round(deviceData?.latency ?? 0)}ms
+                                    <span className={clsx('text-[10px] font-bold w-12 text-right',
+                                        isDeviceOffline ? 'text-slate-400' : (deviceData?.latency ?? 0) > 200 ? 'text-rose-500' : 'text-violet-500')}>
+                                        {isDeviceOffline ? 'Unknown' : `${Math.round(deviceData?.latency ?? 0)}ms`}
                                     </span>
                                 </div>
                             </div>
                         </div>
 
                         {/* Live Logs */}
-                        <div className="flex-1 min-h-0 flex flex-col bg-white border border-slate-200 rounded-[2rem] shadow-sm overflow-hidden">
+                        <div className="lg:flex-1 lg:min-h-0 flex flex-col bg-white border border-slate-200 rounded-[2rem] shadow-sm overflow-hidden" style={{ minHeight: '200px' }}>
                             <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 flex-none">
                                 <div className="flex items-center gap-2">
                                     <Clock className="w-4 h-4 text-slate-400" />
@@ -479,7 +543,7 @@ export default function Dashboard() {
                                     {alerts.length} events
                                 </span>
                             </div>
-                            <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-2">
+                            <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-2" style={{ maxHeight: '240px' }}>
                                 <AnimatePresence>
                                     {alerts.map((alert) => (
                                         <motion.div key={alert.id}
@@ -511,10 +575,10 @@ export default function Dashboard() {
                     </div>
 
                     {/* ═══ COL 2: MAP + ROSTER (5 cols) ════════════════════════ */}
-                    <div className="col-span-12 lg:col-span-5 h-full flex flex-col gap-3">
+                    <div className="lg:col-span-5 flex flex-col gap-3 lg:h-full order-2">
 
                         {/* Map */}
-                        <div className="flex-1 bg-white border border-slate-200 rounded-[2rem] overflow-hidden shadow-md relative">
+                        <div className="bg-white border border-slate-200 rounded-[2rem] overflow-hidden shadow-md relative" style={{ minHeight: '320px', flex: '1 1 auto' }}>
                             <div className="absolute top-4 left-4 z-[400] bg-white/90 backdrop-blur-xl px-3 py-1.5 rounded-full border border-slate-200 flex items-center gap-2 shadow-sm pointer-events-none">
                                 <span className="relative flex h-2 w-2">
                                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
@@ -522,9 +586,9 @@ export default function Dashboard() {
                                 </span>
                                 <span className="text-[10px] font-bold text-slate-700 tracking-wide uppercase">Live GPS</span>
                             </div>
-                            {deviceData?.location ? (
+                            {displayData?.location ? (
                                 <div style={{ position: 'absolute', inset: 0 }}>
-                                    <MapWrapper lat={deviceData.location.lat || 0} lng={deviceData.location.lng || 0} trail={trail} status={displayStatus} />
+                                    <MapWrapper lat={displayData.location.lat || 0} lng={displayData.location.lng || 0} trail={trail} status={displayStatus} />
                                 </div>
                             ) : (
                                 <div className="h-full w-full flex items-center justify-center bg-slate-50">
@@ -567,7 +631,7 @@ export default function Dashboard() {
                     </div>
 
                     {/* ═══ COL 3: ANALYTICS (4 cols) ════════════════════════════ */}
-                    <div className="col-span-12 lg:col-span-4 h-full overflow-hidden">
+                    <div className="lg:col-span-4 lg:h-full overflow-hidden order-3">
                         <AnalyticsPanel
                             tempHistory={tempHistory}
                             movementHistory={movementHistory}

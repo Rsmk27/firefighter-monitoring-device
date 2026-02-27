@@ -17,7 +17,7 @@ String firebaseAuth = "YOUR_FIREBASE_SECRET";
 #define MPU_ADDR 0x68
 #define DHTPIN 4
 #define DHTTYPE DHT11
-#define SOS_BUTTON 13
+#define SOS_BUTTON 0   // Built-in BOOT push button on ESP32 (GPIO 0, Active LOW)
 #define BUZZER 12
 #define GPS_RX 16
 #define GPS_TX 17
@@ -47,6 +47,7 @@ String mpuStatus = "OK";
 String dhtStatus = "OK";
 String gpsStatus = "OK";
 String systemStatus = "OK";
+bool sosPressed = false;   // Tracks if the built-in SOS button is currently pressed
 
 // ================= FIREBASE FUNCTION =================
 void sendToFirebase(float temperature,
@@ -75,6 +76,7 @@ void sendToFirebase(float temperature,
       jsonData += "\"dht_status\":\"" + dhtStatus + "\",";
       jsonData += "\"gps_status\":\"" + gpsStatus + "\",";
       jsonData += "\"system_status\":\"" + systemStatus + "\",";
+      jsonData += "\"sos_pressed\":" + String(sosPressed ? "true" : "false") + ",";
       jsonData += "\"latitude\":" + String(latitude,6) + ",";
       jsonData += "\"longitude\":" + String(longitude,6) + ",";
       jsonData += "\"timestamp\":" + String(millis());
@@ -228,7 +230,8 @@ void loop() {
   }
 
   // ================= SOS =================
-  bool sosPressed = digitalRead(SOS_BUTTON) == LOW;
+  // GPIO 0 is the built-in BOOT button on ESP32 — Active LOW, no external wiring needed
+  sosPressed = (digitalRead(SOS_BUTTON) == LOW);
   if (sosPressed) {
     deviceState = "SOS";
   }
@@ -257,6 +260,7 @@ void loop() {
   Serial.print("DHT Status: "); Serial.println(dhtStatus);
   Serial.print("GPS Status: "); Serial.println(gpsStatus);
   Serial.print("System Status: "); Serial.println(systemStatus);
+  Serial.print("SOS Pressed: "); Serial.println(sosPressed ? "YES" : "NO");
   Serial.println("============================");
 
   // ================= FIREBASE =================
