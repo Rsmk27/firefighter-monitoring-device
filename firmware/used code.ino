@@ -47,7 +47,12 @@ String mpuStatus = "OK";
 String dhtStatus = "OK";
 String gpsStatus = "OK";
 String systemStatus = "OK";
-bool sosPressed = false;   // Tracks if the built-in SOS button is currently pressed
+// ================= SOS LATCH STATE =================
+bool sosActive = false;          // TRUE = SOS latched ON
+int  sosDeactivateCount = 0;     // Counts presses after SOS is activated (needs 2 to cancel)
+bool lastButtonState = HIGH;     // Previous raw button reading (Active LOW)
+unsigned long lastDebounceTime = 0;
+const unsigned long DEBOUNCE_MS = 200;  // Ignore bounces within 200ms
 
 // ================= FIREBASE FUNCTION =================
 void sendToFirebase(float temperature,
@@ -76,7 +81,7 @@ void sendToFirebase(float temperature,
       jsonData += "\"dht_status\":\"" + dhtStatus + "\",";
       jsonData += "\"gps_status\":\"" + gpsStatus + "\",";
       jsonData += "\"system_status\":\"" + systemStatus + "\",";
-      jsonData += "\"sos_pressed\":" + String(sosPressed ? "true" : "false") + ",";
+      jsonData += "\"sos_active\":" + String(sosActive ? "true" : "false") + ",";
       jsonData += "\"latitude\":" + String(latitude,6) + ",";
       jsonData += "\"longitude\":" + String(longitude,6) + ",";
       jsonData += "\"timestamp\":" + String(millis());
@@ -229,10 +234,45 @@ void loop() {
     gpsStatus = "NO_SIGNAL";
   }
 
-  // ================= SOS =================
-  // GPIO 0 is the built-in BOOT button on ESP32 — Active LOW, no external wiring needed
-  sosPressed = (digitalRead(SOS_BUTTON) == LOW);
-  if (sosPressed) {
+  // ================= SOS (Latching Toggle) =================
+  // GPIO 0 = built-in BOOT button on ESP32 (Active LOW)
+  // Behaviour:
+  //   Press 1       → SOS activates and STAYS on
+  //   Press 2 + 3   → SOS deactivates (requires 2 presses to prevent accidental cancel)
+  bool currentButtonState = digitalRead(SOS_BUTTON);
+  bool buttonJustPressed = false;
+
+  // Detect rising edge (button released after being pressed) with debounce
+  if (currentButtonState == HIGH && lastButtonState == LOW) {
+    unsigned long now = millis();
+    if (now - lastDebounceTime >= DEBOUNCE_MS) {
+      buttonJustPressed = true;
+      lastDebounceTime = now;
+    }
+  }
+  lastButtonState = currentButtonState;
+
+  if (buttonJustPressed) {
+    if (!sosActive) {
+      // First press — latch SOS ON
+      sosActive = true;
+      sosDeactivateCount = 0;
+      Serial.println(">>> SOS ACTIVATED <<<");
+    } else {
+      // SOS already active — count cancel presses
+      sosDeactivateCount++;
+      Serial.print("SOS cancel press: ");
+      Serial.print(sosDeactivateCount);
+      Serial.println(" / 2");
+      if (sosDeactivateCount >= 2) {
+        sosActive = false;
+        sosDeactivateCount = 0;
+        Serial.println(">>> SOS DEACTIVATED <<<");
+      }
+    }
+  }
+
+  if (sosActive) {
     deviceState = "SOS";
   }
 
@@ -260,7 +300,7 @@ void loop() {
   Serial.print("DHT Status: "); Serial.println(dhtStatus);
   Serial.print("GPS Status: "); Serial.println(gpsStatus);
   Serial.print("System Status: "); Serial.println(systemStatus);
-  Serial.print("SOS Pressed: "); Serial.println(sosPressed ? "YES" : "NO");
+  Serial.print("SOS Active: "); Serial.println(sosActive ? "YES (press 2x to cancel)" : "NO");
   Serial.println("============================");
 
   // ================= FIREBASE =================
