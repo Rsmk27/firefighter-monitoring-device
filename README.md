@@ -93,7 +93,7 @@ The **Sustainable Firefighter Monitoring System (SFMS)** is a real-time IoT safe
 | 2 | **MPU-6050** | 3-axis accelerometer & gyroscope — movement and fall detection |
 | 3 | **DHT11** | Ambient temperature sensor |
 | 4 | **Neo-6M GPS Module** | Latitude/longitude tracking |
-| 5 | **Push Button** | Manual SOS trigger |
+| 5 | **Built-in Push Button** | Built-in push button of ESP32 used as manual SOS trigger |
 | 6 | **Buzzer** | Local audible alert |
 | 7 | **RGB / Status LED** | Visual status indicator |
 | 8 | **Li-ion Battery** | Primary power source |
@@ -166,14 +166,9 @@ The **Sustainable Firefighter Monitoring System (SFMS)** is a real-time IoT safe
 
 ## 5. Circuit Diagrams
 
-The repository includes two visual circuit diagrams:
+The repository includes the visual circuit diagram for the **ESP32**:
 
-| File | Description |
-|------|-------------|
-| [`SFMD with ESP 32.png`](SFMD%20with%20ESP%2032.png) | Full wiring diagram using the **ESP32** |
-| [`SFMD with ESP8266.png`](SFMD%20with%20ESP8266.png) | Alternative wiring diagram using the **ESP8266** |
-
-> The ESP32 version is recommended for production because it offers built-in Bluetooth, dual-core processing, and more GPIO pins. The ESP8266 variant is documented for lower-cost prototypes.
+![SFMD with ESP 32](SFMD%20with%20ESP%2032.png)
 
 ---
 
@@ -222,7 +217,7 @@ If `dht.readTemperature()` returns `NaN`, `dhtStatus` is set to `"ERROR"` and `s
 
 ### 6.4 SOS Logic
 
-- The SOS button is wired to **GPIO 13** with the internal pull-up resistor enabled.
+- We are using the built-in push button of the ESP32 as the SOS button (configured on **GPIO 13** with the internal pull-up resistor enabled).
 - When pressed, the pin reads `LOW`.
 - This immediately overrides all other states and sets `deviceState = "SOS"`.
 
@@ -305,9 +300,9 @@ The web dashboard is a Next.js application that connects to Firebase Realtime Da
 
 ### 7.2 Dashboard Screenshot
 
-| Mock Data in Action |
+| Real Data in Action |
 |---|
-| ![Dashboard with mock data](mockdata%20output.png) |
+| ![Dashboard with real data](Real%20data%20output.png) |
 
 ---
 
@@ -376,9 +371,8 @@ firefighter-monitoring-device/
 │   ├── package.json
 │   ├── next.config.ts
 │   └── tsconfig.json
-├── SFMD with ESP 32.png         # Circuit diagram — ESP32 version
-├── SFMD with ESP8266.png        # Circuit diagram — ESP8266 version
-├── mockdata output.png          # Screenshot of dashboard with mock data
+├── SFMD with ESP 32.png         # Circuit diagram
+├── Real data output.png         # Screenshot of dashboard with real data
 ├── list of components.txt       # Hardware BOM
 └── PRD.txt                      # Product Requirements Document
 ```
