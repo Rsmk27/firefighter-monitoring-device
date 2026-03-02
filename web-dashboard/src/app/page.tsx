@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { motion, AnimatePresence } from 'framer-motion';
+import SettingsMenu, { type UnitMode } from '@/components/SettingsMenu';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type DeviceState = 'NORMAL' | 'WARNING' | 'EMERGENCY' | 'SOS' | 'OFFLINE';
@@ -58,9 +59,9 @@ interface UnitProfile {
 
 const UNIT_PROFILES: Record<string, UnitProfile> = {
     FF_001: { name: 'RSMK', callsign: 'Omega', role: 'FIREFIGHTER' },
-    FF_002: { name: 'Arjun', callsign: 'Delta', role: 'FIREFIGHTER' },
-    FF_003: { name: 'Kiran', callsign: 'Echo', role: 'RESCUE' },
-    FF_004: { name: 'Priya', callsign: 'Foxtrot', role: 'MEDIC' },
+    FF_002: { name: 'Santhosh', callsign: 'Delta', role: 'FIREFIGHTER' },
+    FF_003: { name: 'Chaitanya', callsign: 'Echo', role: 'RESCUE' },
+    FF_004: { name: 'Srinivas', callsign: 'Foxtrot', role: 'MEDIC' },
 };
 
 // ─── Role badge colour helper ─────────────────────────────────────────────────
@@ -68,10 +69,16 @@ const roleStyle = (role: string) => {
     switch (role) {
         case 'FIREFIGHTER': return 'bg-orange-100 text-orange-700 border-orange-200';
         case 'SOLDIER': return 'bg-green-100  text-green-700  border-green-200';
-        case 'RESCUE': return 'bg-sky-100    text-sky-700    border-sky-200';
-        case 'MEDIC': return 'bg-rose-100   text-rose-700   border-rose-200';
         default: return 'bg-slate-100  text-slate-600  border-slate-200';
     }
+};
+
+// ─── Per-mode header display profile ─────────────────────────────────────────
+// Controls the unit ID badge, name, and callsign shown in the header
+// when each mode is active. Edit these to match your real personnel.
+const MODE_DISPLAY: Record<string, { id: string; name: string; callsign: string }> = {
+    FIREFIGHTER: { id: 'FF001', name: 'RSMK', callsign: 'Omega' },
+    SOLDIER: { id: 'S01', name: 'Chaitanya', callsign: 'Alpha' },
 };
 
 // ─── Multi-device roster ──────────────────────────────────────────────────────
@@ -144,6 +151,11 @@ export default function Dashboard() {
     const [secondsOffline, setSecondsOffline] = useState<number>(0);
     const [smsSent, setSmsSent] = useState(false);           // UI feedback flag
     const [smsError, setSmsError] = useState<string | null>(null);
+
+    // Mode — starts from the device's profile, can be changed via SettingsMenu
+    const [activeMode, setActiveMode] = useState<UnitMode>(
+        (UNIT_PROFILES[DEVICE_ID]?.role as UnitMode) ?? 'FIREFIGHTER'
+    );
 
     // Holds the last successfully received Firebase data — never cleared on disconnect
     const lastKnownData = useRef<DeviceData | null>(null);
@@ -440,15 +452,6 @@ export default function Dashboard() {
     return (
         <main className="min-h-screen w-full bg-slate-50 text-slate-900 font-sans selection:bg-indigo-500/30 flex flex-col">
 
-            {/* ── OFFLINE BANNER ───────────────────────────────────────────── */}
-            {isDeviceOffline && (
-                <div className="flex-none bg-rose-600 text-white text-xs font-bold px-4 py-1.5 flex items-center justify-center gap-2 z-30">
-                    <span className="animate-pulse">⚠</span>
-                    {lastKnownData.current
-                        ? <>Device Offline — Showing last known data <span className="font-normal opacity-80">(last update {secondsOffline}s ago)</span></>
-                        : <>Device Offline — No data received yet. Waiting for device...</>}
-                </div>
-            )}
 
             {/* ── SMS STATUS BANNER ─────────────────────────────────────────── */}
             {smsSent && displayStatus === 'SOS' && (
@@ -475,28 +478,28 @@ export default function Dashboard() {
             <header className="flex-none px-4 md:px-6 py-3 border-b border-slate-200 bg-white/80 backdrop-blur-md z-20 flex justify-between items-center h-14 md:h-16 sticky top-0">
                 {/* ── Left: Tracked person identity ── */}
                 <div className="flex items-center gap-2 md:gap-3 min-w-0">
-                    {/* ID + Name + Callsign */}
+                    {/* ID + Name + Callsign — driven by activeMode */}
                     <div className="min-w-0">
                         <div className="flex items-center gap-1.5 flex-wrap">
                             {/* Unit ID badge */}
                             <span className="font-mono text-[10px] md:text-xs font-black px-1.5 py-0.5 rounded-md bg-indigo-600 text-white tracking-widest flex-shrink-0">
-                                {DEVICE_ID.replace('_', '')}
+                                {MODE_DISPLAY[activeMode]?.id ?? DEVICE_ID.replace('_', '')}
                             </span>
                             {/* Name · Callsign */}
                             <h1 className="text-sm md:text-lg font-bold text-slate-900 tracking-tight leading-none truncate">
-                                {UNIT_PROFILES[DEVICE_ID]?.name ?? 'Unknown'}
-                                <span className="text-slate-400 font-normal"> ({UNIT_PROFILES[DEVICE_ID]?.callsign ?? '—'})</span>
+                                {MODE_DISPLAY[activeMode]?.name ?? UNIT_PROFILES[DEVICE_ID]?.name ?? 'Unknown'}
+                                <span className="text-slate-400 font-normal"> ({MODE_DISPLAY[activeMode]?.callsign ?? UNIT_PROFILES[DEVICE_ID]?.callsign ?? '—'})</span>
                             </h1>
                         </div>
                         {/* Role tag — hidden on very small screens */}
                         <div className="hidden sm:flex items-center gap-1 mt-0.5">
                             <span className={clsx(
                                 'text-[9px] font-bold px-1.5 py-0.5 rounded border tracking-widest uppercase',
-                                roleStyle(UNIT_PROFILES[DEVICE_ID]?.role ?? '')
+                                roleStyle(activeMode)
                             )}>
-                                {UNIT_PROFILES[DEVICE_ID]?.role ?? 'UNKNOWN'}
+                                {activeMode}
                             </span>
-                            <span className="text-[9px] text-slate-400 font-mono">· {DEVICE_ID}</span>
+                            <span className="text-[9px] text-slate-400 font-mono">· {MODE_DISPLAY[activeMode]?.id ?? DEVICE_ID}</span>
                         </div>
                     </div>
                 </div>
@@ -534,6 +537,12 @@ export default function Dashboard() {
                         className="text-[10px] md:text-xs px-2 md:px-3 py-1 md:py-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors font-medium border border-indigo-200 whitespace-nowrap">
                         {useMock ? 'Exit Sim' : 'Simulate'}
                     </button>
+
+                    {/* ⋮ Settings Menu */}
+                    <SettingsMenu
+                        activeMode={activeMode}
+                        onModeChange={setActiveMode}
+                    />
                 </div>
             </header>
 
