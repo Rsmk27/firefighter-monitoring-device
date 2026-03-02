@@ -5,7 +5,6 @@ import { collection, doc, onSnapshot, query, orderBy, limit, where } from 'fireb
 import { ref, onValue } from 'firebase/database';
 import { db, rtdb } from '@/lib/firebase';
 import MapWrapper from '@/components/MapWrapper';
-import AnalyticsPanel from '@/components/AnalyticsPanel';
 import {
     Thermometer, Activity, ShieldCheck, AlertTriangle,
     Siren, Clock, Wifi, Zap,
@@ -15,6 +14,7 @@ import {
 import clsx from 'clsx';
 import { motion, AnimatePresence } from 'framer-motion';
 import SettingsMenu, { type UnitMode } from '@/components/SettingsMenu';
+import AnalyticsPanel, { type SensorStatus } from '@/components/AnalyticsPanel';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type DeviceState = 'NORMAL' | 'WARNING' | 'EMERGENCY' | 'SOS' | 'OFFLINE';
@@ -151,6 +151,12 @@ export default function Dashboard() {
     const [secondsOffline, setSecondsOffline] = useState<number>(0);
     const [smsSent, setSmsSent] = useState(false);           // UI feedback flag
     const [smsError, setSmsError] = useState<string | null>(null);
+    const [sensorStatus, setSensorStatus] = useState<SensorStatus>({
+        gps: 'unknown',
+        dht11: 'unknown',
+        mpu6050: 'unknown',
+        wifi: 'unknown',
+    });
 
     // Mode — starts from the device's profile, can be changed via SettingsMenu
     const [activeMode, setActiveMode] = useState<UnitMode>(
@@ -277,6 +283,8 @@ export default function Dashboard() {
             setAlerts(generateMockAlerts());
             setLastHeartbeat(new Date());
             setTrail([[initialData.location.lat, initialData.location.lng]]);
+            // Sensors all OK in sim mode
+            setSensorStatus({ gps: 'ok', dht11: 'ok', mpu6050: 'ok', wifi: 'ok' });
 
             const loop = setInterval(() => {
                 const newData = generateMockData(mockLat, mockLng);
@@ -287,6 +295,8 @@ export default function Dashboard() {
                 setTrail(prev => [...prev.slice(-50), [newData.location.lat, newData.location.lng]]);
                 pushAnalytics(newData.temperature, newData.movement, newData.status);
                 if (newData.status !== 'NORMAL') announceStatus(newData.status);
+                // In mock mode all sensors are OK
+                setSensorStatus({ gps: 'ok', dht11: 'ok', mpu6050: 'ok', wifi: 'ok' });
 
                 // SOS → fire SMS alert once per activation
                 if (newData.status === 'SOS') {
@@ -343,6 +353,20 @@ export default function Dashboard() {
                 };
 
                 if (mappedStatus !== 'NORMAL' && mappedStatus !== 'OFFLINE') announceStatus(mappedStatus);
+
+                // Derive sensor health from RTDB fields
+                setSensorStatus({
+                    gps: rtdbData.gps_status === 'OK' ? 'ok'
+                        : rtdbData.gps_status === 'NO_SIGNAL' || rtdbData.gps_status === 'NO_FIX' ? 'error'
+                            : 'unknown',
+                    dht11: (rtdbData.temperature != null && rtdbData.temperature !== -999) ? 'ok'
+                        : rtdbData.temperature === -999 ? 'error'
+                            : 'unknown',
+                    mpu6050: rtdbData.movement != null ? 'ok' : 'unknown',
+                    wifi: rtdbData.system_status === 'OK' ? 'ok'
+                        : rtdbData.system_status != null ? 'error'
+                            : 'unknown',
+                });
 
                 // SOS → fire SMS alert once per activation
                 if (mappedStatus === 'SOS') {
@@ -784,6 +808,7 @@ export default function Dashboard() {
                             tempHistory={tempHistory}
                             movementHistory={movementHistory}
                             statusCounts={statusCounts}
+                            sensorStatus={sensorStatus}
                         />
                     </div>
 

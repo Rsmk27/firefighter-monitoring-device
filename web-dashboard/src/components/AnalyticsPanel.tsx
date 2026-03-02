@@ -8,11 +8,8 @@ import {
     CartesianGrid,
     Tooltip,
     ResponsiveContainer,
-    PieChart,
-    Pie,
-    Cell,
 } from 'recharts';
-import { Thermometer, TrendingUp, TrendingDown, Minus, Activity, BarChart2 } from 'lucide-react';
+import { Thermometer, TrendingUp, TrendingDown, Minus, Activity, BarChart2, MapPin, Cpu, Radio, CheckCircle2, XCircle, AlertCircle, Wifi } from 'lucide-react';
 import clsx from 'clsx';
 
 // ---- Types ----
@@ -32,10 +29,18 @@ interface StatusCount {
     color: string;
 }
 
+export interface SensorStatus {
+    gps: 'ok' | 'error' | 'unknown';
+    dht11: 'ok' | 'error' | 'unknown';
+    mpu6050: 'ok' | 'error' | 'unknown';
+    wifi: 'ok' | 'error' | 'unknown';
+}
+
 interface AnalyticsPanelProps {
     tempHistory: TempDataPoint[];
     movementHistory: MovementPoint[];
     statusCounts: StatusCount[];
+    sensorStatus: SensorStatus;
 }
 
 // ---- Custom Tooltip ----
@@ -76,6 +81,7 @@ export default function AnalyticsPanel({
     tempHistory,
     movementHistory,
     statusCounts,
+    sensorStatus,
 }: AnalyticsPanelProps) {
     // Filter out any stale -999 sensor-error values (safety net)
     const temps = tempHistory.map((d) => d.temp).filter((t) => t !== -999);
@@ -225,51 +231,113 @@ export default function AnalyticsPanel({
                 </div>
             </div>
 
-            {/* ---- Status Distribution ---- */}
+            {/* ---- Sensor Health ---- */}
             <div className="flex-none bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
                 <div className="flex items-center gap-2 mb-3">
-                    <BarChart2 className="w-3.5 h-3.5 text-violet-500" />
+                    <div className="p-1 rounded-lg bg-teal-50">
+                        <Radio className="w-3.5 h-3.5 text-teal-500" />
+                    </div>
                     <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">
-                        Status Distribution
+                        Sensor Health
+                    </span>
+                    <span className={clsx(
+                        'ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded-full',
+                        Object.values(sensorStatus).every(s => s === 'ok')
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : Object.values(sensorStatus).some(s => s === 'error')
+                                ? 'bg-rose-100 text-rose-700'
+                                : 'bg-amber-100 text-amber-700'
+                    )}>
+                        {Object.values(sensorStatus).every(s => s === 'ok') ? 'All OK'
+                            : Object.values(sensorStatus).some(s => s === 'error') ? 'Fault'
+                                : 'Pending'}
                     </span>
                 </div>
-                <div className="flex items-center gap-4">
-                    {/* Donut */}
-                    <div className="flex-none">
-                        <PieChart width={90} height={90}>
-                            <Pie
-                                data={statusCounts.filter((s) => s.value > 0)}
-                                cx={40}
-                                cy={40}
-                                innerRadius={28}
-                                outerRadius={42}
-                                paddingAngle={3}
-                                dataKey="value"
-                                strokeWidth={0}
+
+                <div className="grid grid-cols-2 gap-2">
+                    {([
+                        {
+                            key: 'gps',
+                            label: 'GPS Module',
+                            sublabel: 'NMEA 0183',
+                            icon: <MapPin className="w-4 h-4" />,
+                            iconBg: 'bg-sky-100 text-sky-600',
+                        },
+                        {
+                            key: 'dht11',
+                            label: 'DHT11',
+                            sublabel: 'Temp · Humidity',
+                            icon: <Thermometer className="w-4 h-4" />,
+                            iconBg: 'bg-amber-100 text-amber-600',
+                        },
+                        {
+                            key: 'mpu6050',
+                            label: 'MPU6050',
+                            sublabel: '6-axis IMU',
+                            icon: <Cpu className="w-4 h-4" />,
+                            iconBg: 'bg-violet-100 text-violet-600',
+                        },
+                        {
+                            key: 'wifi',
+                            label: 'Wi-Fi',
+                            sublabel: 'Firebase RTDB',
+                            icon: <Wifi className="w-4 h-4" />,
+                            iconBg: 'bg-emerald-100 text-emerald-600',
+                        },
+                    ] as const).map(({ key, label, sublabel, icon, iconBg }) => {
+                        const st = sensorStatus[key];
+                        const isOk = st === 'ok';
+                        const isError = st === 'error';
+                        return (
+                            <div
+                                key={key}
+                                className={clsx(
+                                    'relative flex flex-col gap-2 p-2.5 rounded-xl border transition-all duration-300',
+                                    isOk ? 'bg-emerald-50  border-emerald-200'
+                                        : isError ? 'bg-rose-50     border-rose-200'
+                                            : 'bg-slate-50    border-slate-200'
+                                )}
                             >
-                                {statusCounts.filter((s) => s.value > 0).map((entry, index) => (
-                                    <Cell key={index} fill={entry.color} />
-                                ))}
-                            </Pie>
-                        </PieChart>
-                    </div>
-                    {/* Legend */}
-                    <div className="flex flex-col gap-1.5 flex-1">
-                        {statusCounts.map((s) => (
-                            <div key={s.name} className="flex items-center justify-between">
-                                <div className="flex items-center gap-1.5">
-                                    <span
-                                        className="w-2 h-2 rounded-full flex-shrink-0"
-                                        style={{ backgroundColor: s.color }}
-                                    />
-                                    <span className="text-[10px] text-slate-600 font-medium">{s.name}</span>
+                                {/* Status dot — pulse when connected */}
+                                <span className={clsx(
+                                    'absolute top-2 right-2 w-1.5 h-1.5 rounded-full',
+                                    isOk ? 'bg-emerald-500 animate-pulse'
+                                        : isError ? 'bg-rose-500'
+                                            : 'bg-slate-300'
+                                )} />
+
+                                {/* Icon */}
+                                <div className={clsx('w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0', iconBg)}>
+                                    {icon}
                                 </div>
-                                <span className="text-[10px] font-bold text-slate-700">
-                                    {Math.round((s.value / totalStatus) * 100)}%
-                                </span>
+
+                                {/* Labels */}
+                                <div className="min-w-0">
+                                    <p className="text-[10px] font-bold text-slate-700 leading-tight">{label}</p>
+                                    <p className="text-[9px] text-slate-400 leading-tight mt-0.5">{sublabel}</p>
+                                </div>
+
+                                {/* Status badge */}
+                                <div className={clsx(
+                                    'flex items-center gap-1 mt-auto'
+                                )}>
+                                    {isOk
+                                        ? <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                                        : isError
+                                            ? <XCircle className="w-3 h-3 text-rose-500" />
+                                            : <AlertCircle className="w-3 h-3 text-slate-400" />}
+                                    <span className={clsx(
+                                        'text-[9px] font-black uppercase tracking-wider',
+                                        isOk ? 'text-emerald-600'
+                                            : isError ? 'text-rose-600'
+                                                : 'text-slate-400'
+                                    )}>
+                                        {isOk ? 'Connected' : isError ? 'Error' : 'Unknown'}
+                                    </span>
+                                </div>
                             </div>
-                        ))}
-                    </div>
+                        );
+                    })}
                 </div>
             </div>
 

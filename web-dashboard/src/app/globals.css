@@ -75,7 +75,9 @@ html.dark body {
 }
 
 /* Page shell */
-html.dark main { background-color: #0f172a !important; }
+html.dark main {
+  background-color: #0f172a !important;
+}
 
 /* Sticky header */
 html.dark header {
@@ -84,30 +86,75 @@ html.dark header {
 }
 
 /* Generic white cards → dark surface */
-html.dark .bg-white           { background-color: #1e293b !important; }
-html.dark .bg-slate-50        { background-color: #1e293b !important; }
-html.dark .bg-slate-100       { background-color: #0f172a !important; }
+html.dark .bg-white {
+  background-color: #1e293b !important;
+}
+
+html.dark .bg-slate-50 {
+  background-color: #1e293b !important;
+}
+
+html.dark .bg-slate-100 {
+  background-color: #0f172a !important;
+}
 
 /* Borders */
-html.dark .border-slate-200   { border-color: #334155 !important; }
-html.dark .border-slate-100   { border-color: #1e293b !important; }
+html.dark .border-slate-200 {
+  border-color: #334155 !important;
+}
+
+html.dark .border-slate-100 {
+  border-color: #1e293b !important;
+}
 
 /* Text */
-html.dark .text-slate-900     { color: #f1f5f9 !important; }
-html.dark .text-slate-800     { color: #e2e8f0 !important; }
-html.dark .text-slate-700     { color: #cbd5e1 !important; }
-html.dark .text-slate-600     { color: #94a3b8 !important; }
-html.dark .text-slate-500     { color: #64748b !important; }
-html.dark .text-slate-400     { color: #475569 !important; }
+html.dark .text-slate-900 {
+  color: #f1f5f9 !important;
+}
+
+html.dark .text-slate-800 {
+  color: #e2e8f0 !important;
+}
+
+html.dark .text-slate-700 {
+  color: #cbd5e1 !important;
+}
+
+html.dark .text-slate-600 {
+  color: #94a3b8 !important;
+}
+
+html.dark .text-slate-500 {
+  color: #64748b !important;
+}
+
+html.dark .text-slate-400 {
+  color: #475569 !important;
+}
 
 /* Backdrop blur header text/icon areas */
-html.dark .backdrop-blur-md   { background: rgba(15, 23, 42, 0.85) !important; }
+html.dark .backdrop-blur-md {
+  background: rgba(15, 23, 42, 0.85) !important;
+}
 
 /* Ambient background blobs — reduce in dark mode */
-html.dark .bg-sky-200\/40     { opacity: 0 !important; }
-html.dark .bg-emerald-200\/30 { opacity: 0 !important; }
-html.dark .from-blue-100\/50  { opacity: 0 !important; }
+html.dark .bg-sky-200\/40 {
+  opacity: 0 !important;
+}
+
+html.dark .bg-emerald-200\/30 {
+  opacity: 0 !important;
+}
+
+html.dark .from-blue-100\/50 {
+  opacity: 0 !important;
+}
 
 /* Scrollbar dark */
-html.dark ::-webkit-scrollbar-track  { background: rgba(30, 41, 59, 0.8); }
-html.dark ::-webkit-scrollbar-thumb  { background: rgba(71, 85, 105, 0.8); }
+html.dark ::-webkit-scrollbar-track {
+  background: rgba(30, 41, 59, 0.8);
+}
+
+html.dark ::-webkit-scrollbar-thumb {
+  background: rgba(71, 85, 105, 0.8);
+}
