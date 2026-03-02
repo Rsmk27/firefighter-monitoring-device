@@ -7,20 +7,41 @@
 #include <WiFiClientSecure.h>
 
 // ================= WIFI + FIREBASE =================
-const char* ssid = "YOUR_WIFI_NAME";
+const char* ssid     = "YOUR_WIFI_NAME";
 const char* password = "YOUR_WIFI_PASSWORD";
 
 String firebaseHost = "https://YOUR_FIREBASE_URL.firebaseio.com";
 String firebaseAuth = "YOUR_FIREBASE_SECRET";
 
 // ================= DEFINITIONS =================
-#define MPU_ADDR 0x68
-#define DHTPIN 4
-#define DHTTYPE DHT11
-#define SOS_BUTTON 0   // Built-in BOOT push button on ESP32 (GPIO 0, Active LOW)
-#define BUZZER 12
-#define GPS_RX 16
-#define GPS_TX 17
+#define MPU_ADDR    0x68
+#define DHTPIN      4
+#define DHTTYPE     DHT11
+#define SOS_BUTTON  0     // Built-in BOOT push button on ESP32 (GPIO 0, Active LOW)
+#define BUZZER      12
+#define GPS_RX      16
+#define GPS_TX      17
+
+// ================= MOVEMENT THRESHOLDS =================
+// Time (seconds) of no movement before escalating state
+#define WARN_SECONDS       10   // ⚠ WARNING  after 10 s no movement
+#define EMERGENCY_SECONDS  30   // 🚨 EMERGENCY after 30 s no movement
+
+// ================= MOVEMENT SENSITIVITY =================
+// Deviation from 1g that counts as "no movement"
+#define MOVE_THRESHOLD  0.03f
+
+// ================= BUZZER TIMING =================
+// Ambient temperature beep intervals (ms) – active only in NORMAL state
+#define AMBIENT_BEEP_INTERVAL_MS  60000UL   // 1 minute between beep bursts
+#define AMBIENT_BEEP_ON_MS          100UL   // Each beep is 100 ms ON
+
+// Critical alert timing
+#define WARNING_BEEP_ON_MS    300UL   // WARNING  : 300 ms ON
+#define WARNING_BEEP_OFF_MS  1200UL   // WARNING  : 1200 ms OFF  → slow repeat
+#define EMERGENCY_BEEP_ON_MS  200UL   // EMERGENCY: 200 ms ON
+#define EMERGENCY_BEEP_OFF_MS 200UL   // EMERGENCY: 200 ms OFF  → rapid repeat
+// SOS: continuous (buzzer always ON)
 
 // ================= OBJECTS =================
 DHT dht(DHTPIN, DHTTYPE);
@@ -29,35 +50,42 @@ HardwareSerial gpsSerial(1);
 
 // ================= SENSOR VARIABLES =================
 int16_t AccX, AccY, AccZ;
-float Ax, Ay, Az;
-float totalAcc = 0;
+float   Ax, Ay, Az;
+float   totalAcc = 0;
 
 // ================= MOVEMENT TRACKING =================
 unsigned long noMoveStartTime = 0;
-bool notMoving = false;
-String movementStatus = "MOVING";
-
-// ================= BUZZER CONTROL =================
-unsigned long buzzerTimer = 0;
-bool buzzerState = false;
+bool          notMoving        = false;
+String        movementStatus   = "MOVING";
 
 // ================= STATUS FLAGS =================
-String deviceState = "STARTUP";
-String mpuStatus = "OK";
-String dhtStatus = "OK";
-String gpsStatus = "OK";
+String deviceState  = "STARTUP";
+String mpuStatus    = "OK";
+String dhtStatus    = "OK";
+String gpsStatus    = "OK";
 String systemStatus = "OK";
-// ================= SOS LATCH STATE =================
-bool sosActive = false;          // TRUE = SOS latched ON
-int  sosDeactivateCount = 0;     // Counts presses after SOS is activated (needs 2 to cancel)
-bool lastButtonState = HIGH;     // Previous raw button reading (Active LOW)
+
+// ================= SOS TOGGLE STATE =================
+// Simple toggle: press 1 → ON, press 2 → OFF, etc.
+bool          sosActive       = false;
+bool          lastButtonState = HIGH;  // Active LOW
 unsigned long lastDebounceTime = 0;
-const unsigned long DEBOUNCE_MS = 200;  // Ignore bounces within 200ms
+const unsigned long DEBOUNCE_MS = 200;
+
+// ================= BUZZER STATE MACHINE =================
+unsigned long buzzerTimer       = 0;   // Tracks last buzzer state change
+bool          buzzerOn          = false;
+
+// Ambient beep tracking (NORMAL state only)
+unsigned long lastAmbientBurstTime = 0; // When the last burst started
+int           ambientBeepCount     = 0; // How many beeps in this burst
+int           ambientBeepsTarget   = 0; // How many beeps we must fire this burst
+bool          ambientBeepInBurst   = false;
+unsigned long ambientBeepTimer     = 0;
+bool          ambientBeepPhase     = false; // false=ON phase, true=OFF gap between beeps
 
 // ================= FIREBASE FUNCTION =================
-void sendToFirebase(float temperature,
-                    double latitude,
-                    double longitude) {
+void sendToFirebase(float temperature, double latitude, double longitude) {
 
   if (WiFi.status() == WL_CONNECTED) {
 
@@ -65,7 +93,6 @@ void sendToFirebase(float temperature,
     client.setInsecure();
 
     HTTPClient https;
-
     String url = firebaseHost + "/firefighters/FF_001.json?auth=" + firebaseAuth;
 
     if (https.begin(client, url)) {
@@ -73,50 +100,160 @@ void sendToFirebase(float temperature,
       https.addHeader("Content-Type", "application/json");
 
       String jsonData = "{";
-      jsonData += "\"temperature\":" + String(temperature) + ",";
-      jsonData += "\"total_acc\":" + String(totalAcc) + ",";
-      jsonData += "\"movement\":\"" + movementStatus + "\",";
-      jsonData += "\"status\":\"" + deviceState + "\",";
-      jsonData += "\"mpu_status\":\"" + mpuStatus + "\",";
-      jsonData += "\"dht_status\":\"" + dhtStatus + "\",";
-      jsonData += "\"gps_status\":\"" + gpsStatus + "\",";
-      jsonData += "\"system_status\":\"" + systemStatus + "\",";
-      jsonData += "\"sos_active\":" + String(sosActive ? "true" : "false") + ",";
-      jsonData += "\"latitude\":" + String(latitude,6) + ",";
-      jsonData += "\"longitude\":" + String(longitude,6) + ",";
-      jsonData += "\"timestamp\":" + String(millis());
+      jsonData += "\"temperature\":"  + String(temperature)                   + ",";
+      jsonData += "\"total_acc\":"    + String(totalAcc)                       + ",";
+      jsonData += "\"movement\":\""   + movementStatus                  + "\",";
+      jsonData += "\"status\":\""     + deviceState                     + "\",";
+      jsonData += "\"mpu_status\":\"" + mpuStatus                       + "\",";
+      jsonData += "\"dht_status\":\"" + dhtStatus                       + "\",";
+      jsonData += "\"gps_status\":\"" + gpsStatus                       + "\",";
+      jsonData += "\"system_status\":\"" + systemStatus                 + "\",";
+      jsonData += "\"sos_active\":"   + String(sosActive ? "true" : "false") + ",";
+      jsonData += "\"latitude\":"     + String(latitude, 6)                    + ",";
+      jsonData += "\"longitude\":"    + String(longitude, 6)                   + ",";
+      jsonData += "\"timestamp\":"    + String(millis());
       jsonData += "}";
 
       int httpCode = https.PUT(jsonData);
-
       Serial.print("Firebase Response: ");
       Serial.println(httpCode);
 
       https.end();
     }
-  }
-  else {
+  } else {
     Serial.println("WiFi Disconnected");
   }
 }
 
+// ================= HELPER: drive buzzer without blocking =================
+// Call every loop iteration. Drives the buzzer based on current deviceState.
+void handleBuzzer(float temperature) {
+
+  unsigned long now = millis();
+
+  // ----- SOS: buzzer fully ON (continuous) -----
+  if (deviceState == "SOS") {
+    digitalWrite(BUZZER, HIGH);
+    buzzerOn = true;
+    // Reset ambient tracking so it restarts cleanly when we leave SOS
+    ambientBeepInBurst   = false;
+    ambientBeepCount     = 0;
+    lastAmbientBurstTime = now;
+    return;
+  }
+
+  // ----- EMERGENCY: rapid 200 ms ON / 200 ms OFF -----
+  if (deviceState == "EMERGENCY") {
+    ambientBeepInBurst = false;
+    ambientBeepCount   = 0;
+    unsigned long interval = buzzerOn ? EMERGENCY_BEEP_ON_MS : EMERGENCY_BEEP_OFF_MS;
+    if (now - buzzerTimer >= interval) {
+      buzzerOn    = !buzzerOn;
+      buzzerTimer = now;
+      digitalWrite(BUZZER, buzzerOn ? HIGH : LOW);
+    }
+    return;
+  }
+
+  // ----- WARNING: slow 300 ms ON / 1200 ms OFF -----
+  if (deviceState == "WARNING") {
+    ambientBeepInBurst = false;
+    ambientBeepCount   = 0;
+    unsigned long interval = buzzerOn ? WARNING_BEEP_ON_MS : WARNING_BEEP_OFF_MS;
+    if (now - buzzerTimer >= interval) {
+      buzzerOn    = !buzzerOn;
+      buzzerTimer = now;
+      digitalWrite(BUZZER, buzzerOn ? HIGH : LOW);
+    }
+    return;
+  }
+
+  // ----- NORMAL: ambient temperature awareness beeps -----
+  // Temperature ranges (prototype thresholds):
+  //   < 25°C   → silent
+  //   25–30°C  → 1 beep / min
+  //   30–35°C  → 2 beeps / min
+  //   35–40°C  → 3 beeps / min
+  //   > 40°C   → state is already escalated before we get here
+
+  int targetBeeps = 0;
+  if (temperature >= 25.0f && temperature < 30.0f) targetBeeps = 1;
+  else if (temperature >= 30.0f && temperature < 35.0f) targetBeeps = 2;
+  else if (temperature >= 35.0f && temperature <= 40.0f) targetBeeps = 3;
+
+  if (targetBeeps == 0) {
+    // Silent range — keep buzzer off, reset burst state
+    digitalWrite(BUZZER, LOW);
+    buzzerOn             = false;
+    ambientBeepInBurst   = false;
+    ambientBeepCount     = 0;
+    lastAmbientBurstTime = now;
+    return;
+  }
+
+  // Check if it's time to start a new burst
+  if (!ambientBeepInBurst) {
+    if (now - lastAmbientBurstTime >= AMBIENT_BEEP_INTERVAL_MS) {
+      // Kick off a new burst
+      ambientBeepInBurst  = true;
+      ambientBeepsTarget  = targetBeeps;
+      ambientBeepCount    = 0;
+      ambientBeepPhase    = false;  // start with ON
+      ambientBeepTimer    = now;
+      digitalWrite(BUZZER, HIGH);
+      buzzerOn = true;
+    } else {
+      // Waiting for next minute — buzzer off
+      digitalWrite(BUZZER, LOW);
+      buzzerOn = false;
+    }
+    return;
+  }
+
+  // Mid-burst: cycle through beeps
+  if (!ambientBeepPhase) {
+    // Currently in ON phase
+    if (now - ambientBeepTimer >= AMBIENT_BEEP_ON_MS) {
+      digitalWrite(BUZZER, LOW);
+      buzzerOn          = false;
+      ambientBeepPhase  = true;   // switch to OFF/gap phase
+      ambientBeepTimer  = now;
+      ambientBeepCount++;         // completed one beep
+
+      if (ambientBeepCount >= ambientBeepsTarget) {
+        // Burst finished
+        ambientBeepInBurst   = false;
+        lastAmbientBurstTime = now;
+      }
+    }
+  } else {
+    // Currently in OFF/gap phase between consecutive beeps
+    if (now - ambientBeepTimer >= AMBIENT_BEEP_ON_MS) {
+      // Gap done — start next beep ON
+      digitalWrite(BUZZER, HIGH);
+      buzzerOn         = true;
+      ambientBeepPhase = false;
+      ambientBeepTimer = now;
+    }
+  }
+}
+
+// ================= SETUP =================
 void setup() {
 
   Serial.begin(115200);
 
-  // WiFi Connection
+  // WiFi
   WiFi.begin(ssid, password);
   Serial.print("Connecting to WiFi");
-
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
-
   Serial.println("\nWiFi Connected");
 
   // I2C
-  Wire.begin(21,22);
+  Wire.begin(21, 22);
   Wire.setClock(100000);
 
   // Wake MPU6050
@@ -130,91 +267,96 @@ void setup() {
 
   pinMode(SOS_BUTTON, INPUT_PULLUP);
   pinMode(BUZZER, OUTPUT);
+  digitalWrite(BUZZER, LOW);
+
+  lastAmbientBurstTime = millis(); // Start the 1-min ambient timer from boot
 
   Serial.println("SFMS System Started");
   delay(2000);
 }
 
+// ================= MAIN LOOP =================
 void loop() {
 
+  // Reset to baseline each iteration; priority is applied below
   systemStatus = "OK";
-  deviceState = "NORMAL";
+  deviceState  = "NORMAL";
 
-  // ================= MPU6050 =================
+  // ================= MPU6050 READ =================
   Wire.beginTransmission(MPU_ADDR);
   Wire.write(0x3B);
 
   if (Wire.endTransmission(false) != 0) {
-    mpuStatus = "ERROR";
+    mpuStatus   = "ERROR";
     systemStatus = "SENSOR_FAILURE";
-  }
-  else {
-
+  } else {
     Wire.requestFrom(MPU_ADDR, 6, true);
 
     if (Wire.available() < 6) {
-      mpuStatus = "ERROR";
+      mpuStatus   = "ERROR";
       systemStatus = "SENSOR_FAILURE";
-    }
-    else {
-
+    } else {
       AccX = Wire.read() << 8 | Wire.read();
       AccY = Wire.read() << 8 | Wire.read();
       AccZ = Wire.read() << 8 | Wire.read();
 
-      Ax = AccX / 16384.0;
-      Ay = AccY / 16384.0;
-      Az = AccZ / 16384.0;
+      Ax = AccX / 16384.0f;
+      Ay = AccY / 16384.0f;
+      Az = AccZ / 16384.0f;
 
-      totalAcc = sqrt(Ax*Ax + Ay*Ay + Az*Az);
+      totalAcc = sqrt(Ax * Ax + Ay * Ay + Az * Az);
       mpuStatus = "OK";
     }
   }
 
   // ================= MOVEMENT LOGIC =================
-  float movement = abs(totalAcc - 1.0);
+  // Priority: SOS > EMERGENCY > WARNING > NORMAL
+  float movement = abs(totalAcc - 1.0f);
 
-  // Lowered threshold to 0.03 to detect small movements like breathing or shifting
-  if (movement < 0.03) {
+  if (movement < MOVE_THRESHOLD) {
     if (!notMoving) {
       noMoveStartTime = millis();
-      notMoving = true;
+      notMoving       = true;
     }
   } else {
+    // Movement detected → reset inactivity timer
     notMoving = false;
   }
 
-  unsigned long noMoveDuration = 0;
-  if (notMoving) {
-    noMoveDuration = (millis() - noMoveStartTime) / 1000;
-  }
+  unsigned long noMoveDuration = notMoving
+      ? (millis() - noMoveStartTime) / 1000UL
+      : 0UL;
 
   if (!notMoving) {
     movementStatus = "MOVING";
-  }
-  else if (noMoveDuration >= 5 && noMoveDuration < 15) {
-    movementStatus = "NOT MOVING (" + String(noMoveDuration) + " sec)";
-    deviceState = "WARNING";
-  }
-  else if (noMoveDuration >= 15) {
+    // deviceState stays NORMAL
+  } else if (noMoveDuration >= EMERGENCY_SECONDS) {
+    // 🚨 EMERGENCY: no movement for 30+ seconds
     movementStatus = "NOT MOVING LONG TIME (" + String(noMoveDuration) + " sec)";
-    deviceState = "EMERGENCY";
+    deviceState    = "EMERGENCY";
+  } else if (noMoveDuration >= WARN_SECONDS) {
+    // ⚠ WARNING: no movement for 10–29 seconds
+    movementStatus = "NOT MOVING (" + String(noMoveDuration) + " sec)";
+    deviceState    = "WARNING";
   }
 
-  // ================= DHT =================
+  // ================= DHT11 READ =================
   float temperature = dht.readTemperature();
 
   if (isnan(temperature)) {
-    dhtStatus = "ERROR";
+    dhtStatus    = "ERROR";
     systemStatus = "SENSOR_FAILURE";
-    temperature = -999;
-  }
-  else {
+    temperature  = -999;
+  } else {
     dhtStatus = "OK";
-  }
 
-  if (temperature > 50) {
-    deviceState = "EMERGENCY (HIGH TEMP)";
+    // Temperature > 40°C escalates to at least WARNING if not already higher
+    // (per spec: > 40°C switches to WARNING/EMERGENCY logic)
+    if (temperature > 40.0f) {
+      if (deviceState == "NORMAL") {
+        deviceState = "WARNING"; // escalate; inactivity timers may push to EMERGENCY
+      }
+    }
   }
 
   // ================= GPS =================
@@ -222,89 +364,65 @@ void loop() {
     gps.encode(gpsSerial.read());
   }
 
-  double latitude = 0;
+  double latitude  = 0;
   double longitude = 0;
 
   if (gps.location.isValid()) {
-    latitude = gps.location.lat();
+    latitude  = gps.location.lat();
     longitude = gps.location.lng();
     gpsStatus = "OK";
-  }
-  else {
+  } else {
     gpsStatus = "NO_SIGNAL";
   }
 
-  // ================= SOS (Latching Toggle) =================
-  // GPIO 0 = built-in BOOT button on ESP32 (Active LOW)
-  // Behaviour:
-  //   Press 1       → SOS activates and STAYS on
-  //   Press 2 + 3   → SOS deactivates (requires 2 presses to prevent accidental cancel)
+  // ================= SOS TOGGLE (Simple press-to-toggle) =================
+  // GPIO 0 = built-in BOOT button (Active LOW)
+  // Press 1 → SOS ON   |   Press 2 → SOS OFF   (clean toggle, debounced)
   bool currentButtonState = digitalRead(SOS_BUTTON);
-  bool buttonJustPressed = false;
 
-  // Detect rising edge (button released after being pressed) with debounce
-  if (currentButtonState == HIGH && lastButtonState == LOW) {
+  // Detect falling-edge (button pressed down) with debounce
+  if (currentButtonState == LOW && lastButtonState == HIGH) {
     unsigned long now = millis();
     if (now - lastDebounceTime >= DEBOUNCE_MS) {
-      buttonJustPressed = true;
       lastDebounceTime = now;
+
+      // Toggle SOS state
+      sosActive = !sosActive;
+
+      if (sosActive) {
+        Serial.println(">>> SOS ACTIVATED <<<");
+      } else {
+        Serial.println(">>> SOS DEACTIVATED – returning to NORMAL <<<");
+      }
     }
   }
   lastButtonState = currentButtonState;
 
-  if (buttonJustPressed) {
-    if (!sosActive) {
-      // First press — latch SOS ON
-      sosActive = true;
-      sosDeactivateCount = 0;
-      Serial.println(">>> SOS ACTIVATED <<<");
-    } else {
-      // SOS already active — count cancel presses
-      sosDeactivateCount++;
-      Serial.print("SOS cancel press: ");
-      Serial.print(sosDeactivateCount);
-      Serial.println(" / 2");
-      if (sosDeactivateCount >= 2) {
-        sosActive = false;
-        sosDeactivateCount = 0;
-        Serial.println(">>> SOS DEACTIVATED <<<");
-      }
-    }
-  }
-
+  // ================= STATE PRIORITY ENFORCEMENT =================
+  // SOS overrides all sensor-based states
   if (sosActive) {
     deviceState = "SOS";
   }
+  // (EMERGENCY and WARNING are already applied above; SOS has highest priority)
 
   // ================= BUZZER =================
-  if (deviceState == "NORMAL") {
-    digitalWrite(BUZZER, LOW);
-  }
-  else if (deviceState == "WARNING") {
-    if (millis() - buzzerTimer >= 1000) {
-      buzzerTimer = millis();
-      buzzerState = !buzzerState;
-      digitalWrite(BUZZER, buzzerState);
-    }
-  }
-  else {
-    digitalWrite(BUZZER, HIGH);
-  }
+  handleBuzzer(temperature);
 
-  // ================= SERIAL OUTPUT =================
+  // ================= SERIAL DEBUG OUTPUT =================
   Serial.println("\n==== FIREFIGHTER REPORT ====");
-  Serial.print("State: "); Serial.println(deviceState);
-  Serial.print("Movement: "); Serial.println(movementStatus);
-  Serial.print("Temperature: "); Serial.println(temperature);
-  Serial.print("MPU Status: "); Serial.println(mpuStatus);
-  Serial.print("DHT Status: "); Serial.println(dhtStatus);
-  Serial.print("GPS Status: "); Serial.println(gpsStatus);
-  Serial.print("System Status: "); Serial.println(systemStatus);
-  Serial.print("SOS Active: "); Serial.println(sosActive ? "YES (press 2x to cancel)" : "NO");
+  Serial.print("State: ");          Serial.println(deviceState);
+  Serial.print("Movement: ");       Serial.println(movementStatus);
+  Serial.print("Temperature: ");    Serial.println(temperature);
+  Serial.print("No-Move Duration: "); Serial.print(noMoveDuration); Serial.println(" sec");
+  Serial.print("MPU Status: ");     Serial.println(mpuStatus);
+  Serial.print("DHT Status: ");     Serial.println(dhtStatus);
+  Serial.print("GPS Status: ");     Serial.println(gpsStatus);
+  Serial.print("System Status: ");  Serial.println(systemStatus);
+  Serial.print("SOS Active: ");     Serial.println(sosActive ? "YES" : "NO");
   Serial.println("============================");
 
   // ================= FIREBASE =================
   sendToFirebase(temperature, latitude, longitude);
 
-  // delay(5000); // Removed blocking delay so GPS and MPU can read continuously
+  // No blocking delay – loop runs continuously so GPS/MPU read at full speed
 }

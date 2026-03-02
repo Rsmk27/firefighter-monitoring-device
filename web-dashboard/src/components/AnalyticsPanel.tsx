@@ -77,11 +77,12 @@ export default function AnalyticsPanel({
     movementHistory,
     statusCounts,
 }: AnalyticsPanelProps) {
-    // Compute stats
-    const temps = tempHistory.map((d) => d.temp);
-    const minTemp = temps.length ? Math.min(...temps) : 0;
-    const maxTemp = temps.length ? Math.max(...temps) : 0;
-    const avgTemp = temps.length ? temps.reduce((a, b) => a + b, 0) / temps.length : 0;
+    // Filter out any stale -999 sensor-error values (safety net)
+    const temps = tempHistory.map((d) => d.temp).filter((t) => t !== -999);
+    const hasTemp = temps.length > 0;
+    const minTemp = hasTemp ? Math.min(...temps) : null;
+    const maxTemp = hasTemp ? Math.max(...temps) : null;
+    const avgTemp = hasTemp ? temps.reduce((a, b) => a + b, 0) / temps.length : null;
 
     const movingCount = movementHistory.filter((m) => m.moving === 1).length;
     const totalCount = movementHistory.length || 1;
@@ -104,19 +105,19 @@ export default function AnalyticsPanel({
             <div className="flex-none grid grid-cols-3 gap-2">
                 <StatBadge
                     label="Min Temp"
-                    value={`${minTemp.toFixed(1)}°C`}
+                    value={minTemp !== null ? `${minTemp.toFixed(1)}°C` : 'N/A'}
                     icon={<TrendingDown className="w-3.5 h-3.5 text-sky-500" />}
                     color="bg-sky-50 border-sky-100"
                 />
                 <StatBadge
                     label="Avg Temp"
-                    value={`${avgTemp.toFixed(1)}°C`}
+                    value={avgTemp !== null ? `${avgTemp.toFixed(1)}°C` : 'N/A'}
                     icon={<Minus className="w-3.5 h-3.5 text-violet-500" />}
                     color="bg-violet-50 border-violet-100"
                 />
                 <StatBadge
                     label="Max Temp"
-                    value={`${maxTemp.toFixed(1)}°C`}
+                    value={maxTemp !== null ? `${maxTemp.toFixed(1)}°C` : 'N/A'}
                     icon={<TrendingUp className="w-3.5 h-3.5 text-rose-500" />}
                     color="bg-rose-50 border-rose-100"
                 />
@@ -134,40 +135,47 @@ export default function AnalyticsPanel({
                     </span>
                 </div>
                 <div className="h-[120px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={tempHistory} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                            <defs>
-                                <linearGradient id="tempGrad" x1="0" y1="0" x2="1" y2="0">
-                                    <stop offset="0%" stopColor="#6366f1" />
-                                    <stop offset="100%" stopColor="#f43f5e" />
-                                </linearGradient>
-                            </defs>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                            <XAxis
-                                dataKey="time"
-                                tick={{ fontSize: 8, fill: '#94a3b8' }}
-                                tickLine={false}
-                                axisLine={false}
-                                interval="preserveStartEnd"
-                            />
-                            <YAxis
-                                tick={{ fontSize: 8, fill: '#94a3b8' }}
-                                tickLine={false}
-                                axisLine={false}
-                                domain={['auto', 'auto']}
-                                tickFormatter={(v) => `${v}°`}
-                            />
-                            <Tooltip content={<TempTooltip />} />
-                            <Line
-                                type="monotone"
-                                dataKey="temp"
-                                stroke="url(#tempGrad)"
-                                strokeWidth={2.5}
-                                dot={false}
-                                activeDot={{ r: 4, fill: '#f43f5e', strokeWidth: 0 }}
-                            />
-                        </LineChart>
-                    </ResponsiveContainer>
+                    {hasTemp ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={tempHistory.filter(d => d.temp !== -999)} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                                <defs>
+                                    <linearGradient id="tempGrad" x1="0" y1="0" x2="1" y2="0">
+                                        <stop offset="0%" stopColor="#6366f1" />
+                                        <stop offset="100%" stopColor="#f43f5e" />
+                                    </linearGradient>
+                                </defs>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                                <XAxis
+                                    dataKey="time"
+                                    tick={{ fontSize: 8, fill: '#94a3b8' }}
+                                    tickLine={false}
+                                    axisLine={false}
+                                    interval="preserveStartEnd"
+                                />
+                                <YAxis
+                                    tick={{ fontSize: 8, fill: '#94a3b8' }}
+                                    tickLine={false}
+                                    axisLine={false}
+                                    domain={['auto', 'auto']}
+                                    tickFormatter={(v) => `${v}°`}
+                                />
+                                <Tooltip content={<TempTooltip />} />
+                                <Line
+                                    type="monotone"
+                                    dataKey="temp"
+                                    stroke="url(#tempGrad)"
+                                    strokeWidth={2.5}
+                                    dot={false}
+                                    activeDot={{ r: 4, fill: '#f43f5e', strokeWidth: 0 }}
+                                />
+                            </LineChart>
+                        </ResponsiveContainer>
+                    ) : (
+                        <div className="h-full flex flex-col items-center justify-center gap-1">
+                            <Thermometer className="w-6 h-6 text-slate-300" />
+                            <p className="text-[10px] text-slate-400 font-medium">N/A — No temperature data yet</p>
+                        </div>
+                    )}
                 </div>
             </div>
 

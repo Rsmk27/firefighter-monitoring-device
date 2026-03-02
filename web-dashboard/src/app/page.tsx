@@ -47,12 +47,39 @@ interface MockDevice {
 
 const DEVICE_ID = 'FF_001';
 
+// ─── Personnel profiles ────────────────────────────────────────────────────────
+// Edit this map to set the name, callsign and role for each device.
+// Role examples: 'FIREFIGHTER' | 'SOLDIER' | 'RESCUE' | 'MEDIC'
+interface UnitProfile {
+    name: string;       // Full name or team name  e.g. "RSMK"
+    callsign: string;   // Radio callsign           e.g. "Omega"
+    role: string;       // Duty / unit type         e.g. "FIREFIGHTER"
+}
+
+const UNIT_PROFILES: Record<string, UnitProfile> = {
+    FF_001: { name: 'RSMK', callsign: 'Omega', role: 'FIREFIGHTER' },
+    FF_002: { name: 'Arjun', callsign: 'Delta', role: 'FIREFIGHTER' },
+    FF_003: { name: 'Kiran', callsign: 'Echo', role: 'RESCUE' },
+    FF_004: { name: 'Priya', callsign: 'Foxtrot', role: 'MEDIC' },
+};
+
+// ─── Role badge colour helper ─────────────────────────────────────────────────
+const roleStyle = (role: string) => {
+    switch (role) {
+        case 'FIREFIGHTER': return 'bg-orange-100 text-orange-700 border-orange-200';
+        case 'SOLDIER': return 'bg-green-100  text-green-700  border-green-200';
+        case 'RESCUE': return 'bg-sky-100    text-sky-700    border-sky-200';
+        case 'MEDIC': return 'bg-rose-100   text-rose-700   border-rose-200';
+        default: return 'bg-slate-100  text-slate-600  border-slate-200';
+    }
+};
+
 // ─── Multi-device roster ──────────────────────────────────────────────────────
 const DEVICE_ROSTER: MockDevice[] = [
-    { id: 'FF_001', name: 'Unit Alpha', online: true, status: 'NORMAL' },
-    { id: 'FF_002', name: 'Unit Bravo', online: false, status: 'OFFLINE' },
-    { id: 'FF_003', name: 'Unit Delta', online: false, status: 'OFFLINE' },
-    { id: 'FF_004', name: 'Unit Echo', online: false, status: 'OFFLINE' },
+    { id: 'FF_001', name: 'RSMK (Omega)', online: true, status: 'NORMAL' },
+    { id: 'FF_002', name: 'Arjun (Delta)', online: false, status: 'OFFLINE' },
+    { id: 'FF_003', name: 'Kiran (Echo)', online: false, status: 'OFFLINE' },
+    { id: 'FF_004', name: 'Priya (Foxtrot)', online: false, status: 'OFFLINE' },
 ];
 
 // ─── Mock data generator ──────────────────────────────────────────────────────
@@ -115,11 +142,16 @@ export default function Dashboard() {
     const [useMock, setUseMock] = useState(false);
     const [trail, setTrail] = useState<[number, number][]>([]);
     const [secondsOffline, setSecondsOffline] = useState<number>(0);
+    const [smsSent, setSmsSent] = useState(false);           // UI feedback flag
+    const [smsError, setSmsError] = useState<string | null>(null);
 
     // Holds the last successfully received Firebase data — never cleared on disconnect
     const lastKnownData = useRef<DeviceData | null>(null);
     // Track when the component first mounted to detect never-connected timeout
     const mountTime = useRef<Date>(new Date());
+    // Track the last SOS-alerted session so we don't spam on every re-render
+    // Reset to false once device leaves SOS, so re-activation fires a fresh SMS.
+    const sosAlertFired = useRef<boolean>(false);
 
     // Analytics state
     const [tempHistory, setTempHistory] = useState<{ time: string; temp: number }[]>([]);
@@ -133,7 +165,10 @@ export default function Dashboard() {
 
     const pushAnalytics = useCallback((temp: number, movement: 'MOVING' | 'STILL', status: string) => {
         const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        setTempHistory(prev => [...prev.slice(-59), { time, temp }]);
+        // Only add valid temperature readings — skip -999 (DHT11 sensor error)
+        if (temp !== -999 && temp != null) {
+            setTempHistory(prev => [...prev.slice(-59), { time, temp }]);
+        }
         setMovementHistory(prev => [...prev.slice(-59), { time, moving: movement === 'MOVING' ? 1 : 0 }]);
         setStatusCounts(prev => prev.map(s => {
             const match =
@@ -143,6 +178,50 @@ export default function Dashboard() {
                 (s.name === 'SOS' && status === 'SOS');
             return match ? { ...s, value: s.value + 1 } : s;
         }));
+    }, []);
+
+    // ── SOS SMS Alert ────────────────────────────────────────────────────────
+    const sendSosAlert = useCallback(async (data: DeviceData) => {
+        // Guard: only fire once per SOS activation
+        if (sosAlertFired.current) return;
+        sosAlertFired.current = true;
+
+        setSmsError(null);
+        setSmsSent(false);
+
+        try {
+            const res = await fetch('/api/send-sms', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    unitId: data.device_id,
+                    unitName: `Unit ${data.device_id}`,
+                    latitude: data.location?.lat,
+                    longitude: data.location?.lng,
+                    timestamp: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
+                }),
+            });
+
+            const json = await res.json();
+
+            if (json.rateLimited) {
+                console.warn('[SOS SMS] Rate-limited:', json.error);
+                // Don't surface rate-limit as an error — SMS was already sent recently
+                setSmsSent(true);
+            } else if (json.success) {
+                console.log(`[SOS SMS] ${json.message}`);
+                setSmsSent(true);
+            } else {
+                console.error('[SOS SMS] Failed:', json.error);
+                setSmsError(json.error ?? 'SMS failed to send.');
+                // Allow retry on next re-activation
+                sosAlertFired.current = false;
+            }
+        } catch (err: any) {
+            console.error('[SOS SMS] Network error:', err);
+            setSmsError('Network error — SMS may not have been sent.');
+            sosAlertFired.current = false;
+        }
     }, []);
 
     // Voice alert
@@ -196,6 +275,17 @@ export default function Dashboard() {
                 setTrail(prev => [...prev.slice(-50), [newData.location.lat, newData.location.lng]]);
                 pushAnalytics(newData.temperature, newData.movement, newData.status);
                 if (newData.status !== 'NORMAL') announceStatus(newData.status);
+
+                // SOS → fire SMS alert once per activation
+                if (newData.status === 'SOS') {
+                    sendSosAlert(newData);
+                } else {
+                    // Unit left SOS — reset so re-activation sends a new SMS
+                    sosAlertFired.current = false;
+                    setSmsSent(false);
+                    setSmsError(null);
+                }
+
                 if (Math.random() > 0.8) {
                     const msg = newData.status === 'EMERGENCY' ? 'Critical Vitals / Sensor Limit' : 'Status Change Detected';
                     setAlerts(prev => [{
@@ -241,6 +331,17 @@ export default function Dashboard() {
                 };
 
                 if (mappedStatus !== 'NORMAL' && mappedStatus !== 'OFFLINE') announceStatus(mappedStatus);
+
+                // SOS → fire SMS alert once per activation
+                if (mappedStatus === 'SOS') {
+                    sendSosAlert(data);
+                } else {
+                    // Unit left SOS — reset so re-activation sends a new SMS
+                    sosAlertFired.current = false;
+                    setSmsSent(false);
+                    setSmsError(null);
+                }
+
                 setDeviceData(data);
                 lastKnownData.current = data; // Always cache last good data
                 pushAnalytics(data.temperature, data.movement, mappedStatus);
@@ -349,6 +450,20 @@ export default function Dashboard() {
                 </div>
             )}
 
+            {/* ── SMS STATUS BANNER ─────────────────────────────────────────── */}
+            {smsSent && displayStatus === 'SOS' && (
+                <div className="flex-none bg-emerald-600 text-white text-xs font-bold px-4 py-1.5 flex items-center justify-center gap-2 z-30">
+                    <span>✅</span>
+                    <span>SOS SMS alert sent to all commanders.</span>
+                </div>
+            )}
+            {smsError && displayStatus === 'SOS' && (
+                <div className="flex-none bg-amber-500 text-white text-xs font-bold px-4 py-1.5 flex items-center justify-center gap-2 z-30">
+                    <span className="animate-pulse">⚠</span>
+                    <span>SMS alert failed: {smsError}</span>
+                </div>
+            )}
+
             {/* Background Ambience */}
             <div className="fixed inset-0 pointer-events-none z-0">
                 <div className="absolute top-0 left-0 w-full h-[500px] bg-gradient-to-b from-blue-100/50 via-slate-50/0 to-transparent opacity-60" />
@@ -358,13 +473,32 @@ export default function Dashboard() {
 
             {/* ── HEADER ─────────────────────────────────────────────────────── */}
             <header className="flex-none px-4 md:px-6 py-3 border-b border-slate-200 bg-white/80 backdrop-blur-md z-20 flex justify-between items-center h-14 md:h-16 sticky top-0">
-                <div className="flex items-center gap-2 md:gap-3">
-                    <div className="bg-gradient-to-br from-indigo-500 to-blue-600 p-1.5 md:p-2 rounded-xl shadow-lg shadow-indigo-500/20">
-                        <ShieldCheck className="w-4 h-4 md:w-5 md:h-5 text-white" />
+                {/* ── Left: Tracked person identity ── */}
+                <div className="flex items-center gap-2 md:gap-3 min-w-0">
+                    {/* ID + Name + Callsign */}
+                    <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                            {/* Unit ID badge */}
+                            <span className="font-mono text-[10px] md:text-xs font-black px-1.5 py-0.5 rounded-md bg-indigo-600 text-white tracking-widest flex-shrink-0">
+                                {DEVICE_ID.replace('_', '')}
+                            </span>
+                            {/* Name · Callsign */}
+                            <h1 className="text-sm md:text-lg font-bold text-slate-900 tracking-tight leading-none truncate">
+                                {UNIT_PROFILES[DEVICE_ID]?.name ?? 'Unknown'}
+                                <span className="text-slate-400 font-normal"> ({UNIT_PROFILES[DEVICE_ID]?.callsign ?? '—'})</span>
+                            </h1>
+                        </div>
+                        {/* Role tag — hidden on very small screens */}
+                        <div className="hidden sm:flex items-center gap-1 mt-0.5">
+                            <span className={clsx(
+                                'text-[9px] font-bold px-1.5 py-0.5 rounded border tracking-widest uppercase',
+                                roleStyle(UNIT_PROFILES[DEVICE_ID]?.role ?? '')
+                            )}>
+                                {UNIT_PROFILES[DEVICE_ID]?.role ?? 'UNKNOWN'}
+                            </span>
+                            <span className="text-[9px] text-slate-400 font-mono">· {DEVICE_ID}</span>
+                        </div>
                     </div>
-                    <h1 className="text-base md:text-xl font-bold text-slate-900 tracking-tight leading-none">
-                        SFMS <span className="hidden sm:inline text-slate-500 font-normal">Command Center</span>
-                    </h1>
                 </div>
 
                 <div className="flex items-center gap-2 md:gap-3">
@@ -393,8 +527,6 @@ export default function Dashboard() {
                         <span className={clsx('text-xs font-bold', (isOnline || useMock) ? 'text-emerald-600' : 'text-slate-500')}>
                             {(isOnline || useMock) ? 'LIVE' : 'OFFLINE'}
                         </span>
-                        <span className="hidden sm:inline text-xs text-slate-400">|</span>
-                        <span className="hidden sm:inline text-xs text-slate-500 font-mono">ID: {DEVICE_ID}</span>
                     </div>
 
                     <button
@@ -458,12 +590,19 @@ export default function Dashboard() {
                         {/* Sensor Row */}
                         <div className="grid grid-cols-2 gap-3 flex-none">
                             <div className="col-span-1 bg-white border border-slate-200 rounded-2xl p-3 shadow-sm flex items-center gap-2 h-14">
-                                <div className={clsx('p-1.5 rounded-lg', (displayData?.temperature || 0) > 40 ? 'bg-rose-100 text-rose-600' : 'bg-emerald-100 text-emerald-600')}>
+                                <div className={clsx('p-1.5 rounded-lg',
+                                    (displayData?.temperature != null && displayData.temperature !== -999 && displayData.temperature > 40)
+                                        ? 'bg-rose-100 text-rose-600'
+                                        : 'bg-emerald-100 text-emerald-600')}>
                                     <Thermometer className="w-4 h-4" />
                                 </div>
                                 <div>
                                     <div className="text-[9px] font-bold text-slate-500 uppercase">Temp{isDeviceOffline && <span className="ml-1 text-amber-500">(last)</span>}</div>
-                                    <div className="text-sm font-bold text-slate-800">{displayData?.temperature?.toFixed(1) ?? '—'}°C</div>
+                                    <div className="text-sm font-bold text-slate-800">
+                                        {displayData?.temperature == null || displayData.temperature === -999
+                                            ? <span className="text-slate-400">N/A</span>
+                                            : `${displayData.temperature.toFixed(1)}°C`}
+                                    </div>
                                 </div>
                             </div>
                             <div className="col-span-1 bg-white border border-slate-200 rounded-2xl p-3 shadow-sm flex items-center gap-2 h-14">

@@ -53,7 +53,7 @@ The **Sustainable Firefighter Monitoring System (SFMS)** is a real-time IoT safe
 
 ```
 ┌─────────────────────────────────────────┐
-│         Firefighter Wearable Device      │
+│       Firefighter Wearable Device       │
 │                                         │
 │  [MPU-6050]  [DHT11]  [Neo-6M GPS]      │
 │  [SOS Btn]   [Buzzer] [LED]             │
