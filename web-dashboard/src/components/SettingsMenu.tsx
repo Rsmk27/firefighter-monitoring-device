@@ -358,7 +358,6 @@ export default function SettingsMenu({ activeMode, onModeChange }: Props) {
                             <Users className="w-4 h-4 text-violet-500" />
                             <div className="flex-1 text-left">
                                 <span className="text-sm font-medium text-slate-700">About</span>
-                                <p className="text-[10px] text-slate-400">RSMK Team · v1.0.0</p>
                             </div>
                         </button>
 
