@@ -5,11 +5,11 @@ import { createPortal } from 'react-dom';
 import {
     MoreVertical, Sun, Moon, Flame, ShieldCheck, Activity,
     Info, Users, X, ChevronRight, Cpu, Wifi,
-    MapPin, Thermometer, Zap,
+    MapPin, Thermometer, Zap, ExternalLink, Siren
 } from 'lucide-react';
 import clsx from 'clsx';
 
-export type UnitMode = 'FIREFIGHTER' | 'SOLDIER';
+export type UnitMode = 'FIREFIGHTER' | 'SOLDIER' | 'POLICE';
 export type Theme = 'light' | 'dark';
 
 interface Props {
@@ -40,6 +40,14 @@ const MODES: {
             icon: <ShieldCheck className="w-4 h-4" />,
             desc: 'Tactical field monitoring',
             active: 'bg-green-50 border-green-300 text-green-700',
+            inactive: 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50',
+        },
+        {
+            value: 'POLICE',
+            label: 'Police',
+            icon: <Siren className="w-4 h-4" />,
+            desc: 'Law enforcement monitoring',
+            active: 'bg-blue-50 border-blue-300 text-blue-700',
             inactive: 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50',
         },
     ];
@@ -121,9 +129,9 @@ function SystemInfoModal() {
 // ─── About content ────────────────────────────────────────────────────────────
 function AboutModal() {
     const team = [
-        { name: 'RSMK', role: 'Project Lead · Firmware & Dashboard', callsign: 'Omega', gradient: 'from-indigo-400 to-violet-500' },
-        // Add more team members below as needed:
-        // { name: 'Arjun', role: 'Hardware Engineer', callsign: 'Delta', gradient: 'from-emerald-400 to-teal-500' },
+        { name: 'Srinivasa Manikanta', linkedin: 'https://www.linkedin.com/in/srinivasamanikanta/', emoji: '💻', gradient: 'from-indigo-400 to-violet-500' },
+        { name: 'Santhosh', linkedin: 'https://www.linkedin.com/in/santhosh-juvvanapudi-07a871373/', emoji: '🧠', gradient: 'from-emerald-400 to-teal-500' },
+        { name: 'Sri Chaitanya', linkedin: 'https://www.linkedin.com/in/chaitu0303/', emoji: '🛠️', gradient: 'from-sky-400 to-blue-500' },
     ];
 
     return (
@@ -135,7 +143,7 @@ function AboutModal() {
                         <ShieldCheck className="w-6 h-6 text-white" />
                     </div>
                 </div>
-                <h3 className="text-xl font-black text-slate-800 tracking-tight">RSMK Guardian</h3>
+                <h3 className="text-xl font-black text-slate-800 tracking-tight">Monitoring Device</h3>
                 <p className="text-xs text-slate-500 mt-1">Multipurpose Personnel Monitoring System</p>
                 <div className="flex items-center justify-center gap-2 mt-3">
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100 font-semibold">
@@ -150,11 +158,12 @@ function AboutModal() {
                 </div>
             </div>
 
-            {/* Features — only 2 modes */}
-            <div className="grid grid-cols-2 gap-2 text-xs">
+            {/* Features */}
+            <div className="grid grid-cols-3 gap-2 text-xs">
                 {[
                     { icon: '🔥', label: 'Firefighter' },
                     { icon: '🪖', label: 'Soldier' },
+                    { icon: '🚓', label: 'Police' },
                 ].map(f => (
                     <div key={f.label} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 border border-slate-100 text-slate-600 font-medium">
                         <span>{f.icon}</span> {f.label} Mode
@@ -169,16 +178,17 @@ function AboutModal() {
                     {team.map(t => (
                         <div key={t.name}
                             className="flex items-center gap-3 p-3 rounded-2xl bg-gradient-to-r from-slate-50 to-indigo-50/40 border border-slate-100">
-                            <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${t.gradient} flex items-center justify-center text-white font-black text-sm flex-shrink-0 shadow-sm`}>
-                                {t.name[0]}
+                            <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${t.gradient} flex items-center justify-center text-white text-lg flex-shrink-0 shadow-sm`}>
+                                {t.emoji || t.name[0]}
                             </div>
                             <div className="flex-1 min-w-0">
-                                <div className="text-sm font-bold text-slate-800">{t.name}</div>
-                                <div className="text-[10px] text-slate-500 truncate">{t.role}</div>
+                                <div className="text-sm font-bold text-slate-800">
+                                    <a href={t.linkedin} target="_blank" rel="noopener noreferrer" className="hover:text-indigo-600 transition-colors inline-flex items-center gap-1 group">
+                                        {t.name}
+                                        <ExternalLink className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    </a>
+                                </div>
                             </div>
-                            <span className="text-[10px] font-mono text-slate-400 flex-shrink-0">
-                                ({t.callsign})
-                            </span>
                         </div>
                     ))}
                 </div>
@@ -186,8 +196,8 @@ function AboutModal() {
 
             {/* Footer */}
             <div className="text-center border-t border-slate-100 pt-4 space-y-1">
-                <p className="text-[11px] text-slate-500">Built with ❤️ for field safety</p>
-                <p className="text-[10px] text-slate-400">© 2026 RSMK Team · All rights reserved</p>
+                <p className="text-[11px] text-slate-500">Built with innovation for nation</p>
+                <p className="text-[10px] text-slate-400">© 2026 Monitoring Device · All rights reserved</p>
             </div>
         </div>
     );

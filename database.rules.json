@@ -1,0 +1,25 @@
+{
+    "rules": {
+        ".read": false,
+        ".write": false,
+        "firefighters": {
+            "$unitId": {
+                ".read": "auth != null",
+                ".write": "auth != null"
+            }
+        },
+        "sos_alerts": {
+            "$unitId": {
+                "latest": {
+                    // Cloud Function writes back the smsStatus field — allow server writes
+                    ".read": "auth != null",
+                    ".write": "auth != null"
+                },
+                "history": {
+                    ".read": "auth != null",
+                    ".write": "auth != null"
+                }
+            }
+        }
+    }
+}

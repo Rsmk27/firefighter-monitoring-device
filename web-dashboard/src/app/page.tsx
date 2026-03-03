@@ -69,6 +69,7 @@ const roleStyle = (role: string) => {
     switch (role) {
         case 'FIREFIGHTER': return 'bg-orange-100 text-orange-700 border-orange-200';
         case 'SOLDIER': return 'bg-green-100  text-green-700  border-green-200';
+        case 'POLICE': return 'bg-blue-100  text-blue-700  border-blue-200';
         default: return 'bg-slate-100  text-slate-600  border-slate-200';
     }
 };
@@ -79,6 +80,7 @@ const roleStyle = (role: string) => {
 const MODE_DISPLAY: Record<string, { id: string; name: string; callsign: string }> = {
     FIREFIGHTER: { id: 'FF001', name: 'RSMK', callsign: 'Omega' },
     SOLDIER: { id: 'S01', name: 'Chaitanya', callsign: 'Alpha' },
+    POLICE: { id: 'P01', name: 'Santhosh', callsign: 'Bravo' },
 };
 
 // ─── Multi-device roster ──────────────────────────────────────────────────────
