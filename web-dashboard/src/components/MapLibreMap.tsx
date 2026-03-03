@@ -68,8 +68,18 @@ function injectCSS() {
         .maplibregl-popup-content {
             border-radius:14px !important; padding:10px 14px !important;
             font-family:system-ui,sans-serif;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
         }
         .maplibregl-ctrl-group { border-radius:10px !important; overflow:hidden; }
+        
+        /* Dark mode overrides for MapLibre UI */
+        html.dark .maplibregl-popup-content { background: #111 !important; border: 1px solid #333; }
+        html.dark .maplibregl-popup-tip {
+            border-top-color: #111 !important; border-bottom-color: #111 !important;
+        }
+        html.dark .maplibregl-ctrl-group { background: #111 !important; border: 1px solid #333; }
+        html.dark .maplibregl-ctrl-group button { filter: invert(1) hue-rotate(180deg); }
+        html.dark .maplibregl-ctrl button.maplibregl-ctrl-compass .maplibregl-ctrl-icon { filter: invert(0); } /* Don't invert compass arrow */
     `;
     document.head.appendChild(el);
 }
@@ -110,9 +120,10 @@ export default function MapLibreMap({ lat, lng, trail, status }: Props) {
     useEffect(() => {
         if (!containerRef.current) return;
 
+        const isDark = document.documentElement.classList.contains('dark');
         const map = new maplibregl.Map({
             container: containerRef.current,
-            style: 'https://tiles.openfreemap.org/styles/liberty',
+            style: isDark ? 'https://tiles.openfreemap.org/styles/dark' : 'https://tiles.openfreemap.org/styles/liberty',
             center: [lng, lat],
             zoom: 16,
             pitch: 45,
@@ -126,55 +137,82 @@ export default function MapLibreMap({ lat, lng, trail, status }: Props) {
         map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
         map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
 
-        map.on('load', () => {
-            loadedRef.current = true;
-
+        const addCustomLayers = () => {
             // ── 3D Buildings ───────────────────────────────────────────────
             let firstSymbolId: string | undefined;
             for (const layer of map.getStyle().layers) {
                 if (layer.type === 'symbol') { firstSymbolId = layer.id; break; }
             }
             try {
-                map.addLayer({
-                    id: 'sfms-buildings-3d', type: 'fill-extrusion',
-                    source: 'openmaptiles', 'source-layer': 'building', minzoom: 14,
-                    paint: {
-                        'fill-extrusion-color': [
-                            'interpolate', ['linear'], ['coalesce', ['get', 'render_height'], 6],
-                            0, '#dde3ed', 15, '#94a3b8', 50, '#64748b',
-                        ],
-                        'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 14, 0, 14.5, ['coalesce', ['get', 'render_height'], 6]],
-                        'fill-extrusion-base': ['interpolate', ['linear'], ['zoom'], 14, 0, 14.5, ['coalesce', ['get', 'render_min_height'], 0]],
-                        'fill-extrusion-opacity': 0.72,
-                    },
-                }, firstSymbolId);
+                if (!map.getLayer('sfms-buildings-3d')) {
+                    map.addLayer({
+                        id: 'sfms-buildings-3d', type: 'fill-extrusion',
+                        source: 'openmaptiles', 'source-layer': 'building', minzoom: 14,
+                        paint: {
+                            'fill-extrusion-color': [
+                                'interpolate', ['linear'], ['coalesce', ['get', 'render_height'], 6],
+                                0, '#dde3ed', 15, '#94a3b8', 50, '#64748b',
+                            ],
+                            'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 14, 0, 14.5, ['coalesce', ['get', 'render_height'], 6]],
+                            'fill-extrusion-base': ['interpolate', ['linear'], ['zoom'], 14, 0, 14.5, ['coalesce', ['get', 'render_min_height'], 0]],
+                            'fill-extrusion-opacity': 0.72,
+                        },
+                    }, firstSymbolId);
+                }
             } catch { /* 3D buildings unavailable in raster fallback */ }
 
             // ── Zone radius ────────────────────────────────────────────────
-            map.addSource('sfms-zone', { type: 'geojson', data: makeCircle(lng, lat, 0.05) as any });
-            map.addLayer({ id: 'sfms-zone-fill', type: 'fill', source: 'sfms-zone', paint: { 'fill-color': zoneCol(status), 'fill-opacity': 0.13 } });
-            map.addLayer({ id: 'sfms-zone-border', type: 'line', source: 'sfms-zone', paint: { 'line-color': zoneCol(status), 'line-width': 2, 'line-dasharray': [4, 3], 'line-opacity': 0.85 } });
+            if (!map.getSource('sfms-zone')) {
+                map.addSource('sfms-zone', { type: 'geojson', data: makeCircle(lng, lat, 0.05) as any });
+                map.addLayer({ id: 'sfms-zone-fill', type: 'fill', source: 'sfms-zone', paint: { 'fill-color': zoneCol(status), 'fill-opacity': 0.13 } });
+                map.addLayer({ id: 'sfms-zone-border', type: 'line', source: 'sfms-zone', paint: { 'line-color': zoneCol(status), 'line-width': 2, 'line-dasharray': [4, 3], 'line-opacity': 0.85 } });
+            }
 
             // ── Trail ──────────────────────────────────────────────────────
-            map.addSource('sfms-trail', { type: 'geojson', data: makeTrail(trail) as any });
-            map.addLayer({ id: 'sfms-trail-glow', type: 'line', source: 'sfms-trail', paint: { 'line-color': '#f43f5e', 'line-width': 10, 'line-opacity': 0.16, 'line-blur': 5 } });
-            map.addLayer({ id: 'sfms-trail-core', type: 'line', source: 'sfms-trail', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#f43f5e', 'line-width': 3.5, 'line-opacity': 0.9 } });
+            if (!map.getSource('sfms-trail')) {
+                map.addSource('sfms-trail', { type: 'geojson', data: makeTrail(trail) as any });
+                map.addLayer({ id: 'sfms-trail-glow', type: 'line', source: 'sfms-trail', paint: { 'line-color': '#f43f5e', 'line-width': 10, 'line-opacity': 0.16, 'line-blur': 5 } });
+                map.addLayer({ id: 'sfms-trail-core', type: 'line', source: 'sfms-trail', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#f43f5e', 'line-width': 3.5, 'line-opacity': 0.9 } });
+            }
+        };
 
-            // ── Firefighter marker ─────────────────────────────────────────
-            const marker = new maplibregl.Marker({ element: buildMarkerEl(), anchor: 'center' })
-                .setLngLat([lng, lat])
-                .setPopup(new maplibregl.Popup({ offset: 28 }).setHTML(`
-                    <div style="min-width:160px">
-                        <div style="font-weight:700;font-size:13px;color:#0f172a">🚒 FF_001 — Unit Alpha</div>
-                        <div style="font-size:11px;color:#64748b;margin-top:3px">Active Firefighter</div>
-                        <div style="font-size:10px;color:#94a3b8;margin-top:2px;font-family:monospace">${lat.toFixed(5)}, ${lng.toFixed(5)}</div>
-                    </div>
-                `))
-                .addTo(map);
-            markerRef.current = marker;
+        map.on('style.load', () => {
+            loadedRef.current = true;
+            addCustomLayers();
         });
 
+        map.on('load', () => {
+            loadedRef.current = true;
+            addCustomLayers();
+
+            // ── Firefighter marker ─────────────────────────────────────────
+            if (!markerRef.current) {
+                const marker = new maplibregl.Marker({ element: buildMarkerEl(), anchor: 'center' })
+                    .setLngLat([lng, lat])
+                    .setPopup(new maplibregl.Popup({ offset: 28 }).setHTML(`
+                        <div style="min-width:160px">
+                            <div class="font-bold text-[13px] text-slate-900 dark:text-white tracking-tight">🚒 FF_001 — Unit Alpha</div>
+                            <div class="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Active Unit</div>
+                            <div class="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 font-mono">${lat.toFixed(5)}, ${lng.toFixed(5)}</div>
+                        </div>
+                    `))
+                    .addTo(map);
+                markerRef.current = marker;
+            }
+        });
+
+        // Watch for dark mode changes
+        const observer = new MutationObserver(() => {
+            const dark = document.documentElement.classList.contains('dark');
+            const newStyle = dark ? 'https://tiles.openfreemap.org/styles/dark' : 'https://tiles.openfreemap.org/styles/liberty';
+            if (mapRef.current) {
+                mapRef.current.setStyle(newStyle);
+            }
+        });
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+
         return () => {
+            observer.disconnect();
             loadedRef.current = false;
             cancelAllRafs();
             map.remove();

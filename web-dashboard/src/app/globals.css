@@ -70,71 +70,71 @@ body {
 
 /* ── Dark Mode ─────────────────────────────────────────────────────────────── */
 html.dark body {
-  background-color: #0f172a;
-  color: #e2e8f0;
+  background-color: #000000;
+  color: #ededed;
 }
 
 /* Page shell */
 html.dark main {
-  background-color: #0f172a !important;
+  background-color: #000000 !important;
 }
 
 /* Sticky header */
 html.dark header {
-  background: rgba(15, 23, 42, 0.85) !important;
-  border-color: #1e293b !important;
+  background: rgba(0, 0, 0, 0.85) !important;
+  border-color: #333333 !important;
 }
 
 /* Generic white cards → dark surface */
 html.dark .bg-white {
-  background-color: #1e293b !important;
+  background-color: #0a0a0a !important;
 }
 
 html.dark .bg-slate-50 {
-  background-color: #1e293b !important;
+  background-color: #111111 !important;
 }
 
 html.dark .bg-slate-100 {
-  background-color: #0f172a !important;
+  background-color: #000000 !important;
 }
 
 /* Borders */
 html.dark .border-slate-200 {
-  border-color: #334155 !important;
+  border-color: #333333 !important;
 }
 
 html.dark .border-slate-100 {
-  border-color: #1e293b !important;
+  border-color: #222222 !important;
 }
 
 /* Text */
 html.dark .text-slate-900 {
-  color: #f1f5f9 !important;
+  color: #ffffff !important;
 }
 
 html.dark .text-slate-800 {
-  color: #e2e8f0 !important;
+  color: #ededed !important;
 }
 
 html.dark .text-slate-700 {
-  color: #cbd5e1 !important;
+  color: #a1a1aa !important;
 }
 
 html.dark .text-slate-600 {
-  color: #94a3b8 !important;
+  color: #888888 !important;
 }
 
 html.dark .text-slate-500 {
-  color: #64748b !important;
+  color: #666666 !important;
 }
 
 html.dark .text-slate-400 {
-  color: #475569 !important;
+  color: #444444 !important;
 }
 
 /* Backdrop blur header text/icon areas */
 html.dark .backdrop-blur-md {
-  background: rgba(15, 23, 42, 0.85) !important;
+  background: rgba(0, 0, 0, 0.8) !important;
 }
 
 /* Ambient background blobs — reduce in dark mode */
@@ -152,9 +152,9 @@ html.dark .from-blue-100\/50 {
 
 /* Scrollbar dark */
 html.dark ::-webkit-scrollbar-track {
-  background: rgba(30, 41, 59, 0.8);
+  background: rgba(17, 17, 17, 0.8);
 }
 
 html.dark ::-webkit-scrollbar-thumb {
-  background: rgba(71, 85, 105, 0.8);
+  background: rgba(51, 51, 51, 0.8);
 }
