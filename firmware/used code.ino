@@ -7,20 +7,28 @@
 #include <WiFiClientSecure.h>
 
 // ================= WIFI + FIREBASE =================
-const char* ssid     = "YOUR_WIFI_NAME";
-const char* password = "YOUR_WIFI_PASSWORD";
+const char* ssid = "The";
+const char* password = "Rsmk2711";
 
-String firebaseHost = "https://YOUR_FIREBASE_URL.firebaseio.com";
+String firebaseHost = "https://firefighter-rtdb.firebaseio.com/";
 String firebaseAuth = "YOUR_FIREBASE_SECRET";
 
 // ================= DEFINITIONS =================
 #define MPU_ADDR    0x68
 #define DHTPIN      4
 #define DHTTYPE     DHT11
-#define SOS_BUTTON  0     // Built-in BOOT push button on ESP32 (GPIO 0, Active LOW)
-#define BUZZER      12
+#define SOS_BUTTON  12     // Built-in BOOT push button on ESP32 (GPIO 0, Active LOW)
+#define BUZZER      13
+// Neo-6M GPS wiring:
+//   ESP32 GPIO16 (GPS_RX)  <---  Neo-6M TX pin  (ESP32 receives NMEA from GPS)
+//   ESP32 GPIO17 (GPS_TX)  --->  Neo-6M RX pin  (optional, only needed for config)
+//   Neo-6M VCC = 3.3V     |   Neo-6M GND = GND
 #define GPS_RX      16
 #define GPS_TX      17
+
+// Set to true to print raw NMEA sentences to Serial for debugging.
+// Keep false in production.
+#define GPS_DEBUG_RAW  false
 
 // ================= MOVEMENT THRESHOLDS =================
 // Time (seconds) of no movement before escalating state
@@ -29,7 +37,7 @@ String firebaseAuth = "YOUR_FIREBASE_SECRET";
 
 // ================= MOVEMENT SENSITIVITY =================
 // Deviation from 1g that counts as "no movement"
-#define MOVE_THRESHOLD  0.03f
+#define MOVE_THRESHOLD  0.13f
 
 // ================= BUZZER TIMING =================
 // Ambient temperature beep intervals (ms) – active only in NORMAL state
@@ -37,7 +45,7 @@ String firebaseAuth = "YOUR_FIREBASE_SECRET";
 #define AMBIENT_BEEP_ON_MS          100UL   // Each beep is 100 ms ON
 
 // Critical alert timing
-#define WARNING_BEEP_ON_MS    300UL   // WARNING  : 300 ms ON
+#define WARNING_BEEP_ON_MS    200UL   // WARNING  : 300 ms ON
 #define WARNING_BEEP_OFF_MS  1200UL   // WARNING  : 1200 ms OFF  → slow repeat
 #define EMERGENCY_BEEP_ON_MS  200UL   // EMERGENCY: 200 ms ON
 #define EMERGENCY_BEEP_OFF_MS 200UL   // EMERGENCY: 200 ms OFF  → rapid repeat
@@ -360,19 +368,32 @@ void loop() {
   }
 
   // ================= GPS =================
+  // Feed all available bytes to TinyGPS++ parser.
+  // Also optionally echo raw NMEA to Serial for debugging.
   while (gpsSerial.available()) {
-    gps.encode(gpsSerial.read());
+    char c = gpsSerial.read();
+    gps.encode(c);
+#if GPS_DEBUG_RAW
+    Serial.write(c);  // Print raw NMEA sentence — use this to confirm data is arriving
+#endif
   }
 
   double latitude  = 0;
   double longitude = 0;
 
-  if (gps.location.isValid()) {
+  // gps.location.isValid()  → TinyGPS++ parsed a complete, non-void fix
+  // gps.location.age()      → milliseconds since last valid fix (should be < 2000 ms)
+  // gps.satellites.value()  → number of satellites locked (need >= 3 for 2D fix)
+  if (gps.location.isValid() && gps.location.age() < 5000) {
     latitude  = gps.location.lat();
     longitude = gps.location.lng();
     gpsStatus = "OK";
+  } else if (gps.charsProcessed() < 10) {
+    // No characters at all received from GPS – wiring or baud rate problem
+    gpsStatus = "NO_DATA";
   } else {
-    gpsStatus = "NO_SIGNAL";
+    // Data is flowing but no valid fix yet (searching for satellites)
+    gpsStatus = "SEARCHING (" + String(gps.satellites.value()) + " sats)";
   }
 
   // ================= SOS TOGGLE (Simple press-to-toggle) =================
@@ -417,6 +438,10 @@ void loop() {
   Serial.print("MPU Status: ");     Serial.println(mpuStatus);
   Serial.print("DHT Status: ");     Serial.println(dhtStatus);
   Serial.print("GPS Status: ");     Serial.println(gpsStatus);
+  Serial.print("GPS Chars Processed: "); Serial.println(gps.charsProcessed());
+  Serial.print("GPS Satellites: ");  Serial.println(gps.satellites.value());
+  Serial.print("GPS Fix Age (ms): "); Serial.println(gps.location.age());
+  Serial.print("GPS Lat/Lng: ");     Serial.print(latitude, 6); Serial.print(" / "); Serial.println(longitude, 6);
   Serial.print("System Status: ");  Serial.println(systemStatus);
   Serial.print("SOS Active: ");     Serial.println(sosActive ? "YES" : "NO");
   Serial.println("============================");

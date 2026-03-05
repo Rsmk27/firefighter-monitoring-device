@@ -30,10 +30,12 @@ interface StatusCount {
 }
 
 export interface SensorStatus {
-    gps: 'ok' | 'error' | 'unknown';
+    gps: 'ok' | 'error' | 'searching' | 'unknown';
     dht11: 'ok' | 'error' | 'unknown';
     mpu6050: 'ok' | 'error' | 'unknown';
     wifi: 'ok' | 'error' | 'unknown';
+    /** Raw gps_status string from Firebase e.g. "SEARCHING (0 sats)" or "OK" */
+    gpsStatusText?: string;
 }
 
 interface AnalyticsPanelProps {
@@ -242,14 +244,14 @@ export default function AnalyticsPanel({
                     </span>
                     <span className={clsx(
                         'ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded-full',
-                        Object.values(sensorStatus).every(s => s === 'ok')
+                        sensorStatus.gps === 'ok' && sensorStatus.dht11 === 'ok' && sensorStatus.mpu6050 === 'ok' && sensorStatus.wifi === 'ok'
                             ? 'bg-emerald-100 text-emerald-700'
-                            : Object.values(sensorStatus).some(s => s === 'error')
+                            : [sensorStatus.gps, sensorStatus.dht11, sensorStatus.mpu6050, sensorStatus.wifi].some(s => s === 'error')
                                 ? 'bg-rose-100 text-rose-700'
                                 : 'bg-amber-100 text-amber-700'
                     )}>
-                        {Object.values(sensorStatus).every(s => s === 'ok') ? 'All OK'
-                            : Object.values(sensorStatus).some(s => s === 'error') ? 'Fault'
+                        {sensorStatus.gps === 'ok' && sensorStatus.dht11 === 'ok' && sensorStatus.mpu6050 === 'ok' && sensorStatus.wifi === 'ok' ? 'All OK'
+                            : [sensorStatus.gps, sensorStatus.dht11, sensorStatus.mpu6050, sensorStatus.wifi].some(s => s === 'error') ? 'Fault'
                                 : 'Pending'}
                     </span>
                 </div>
@@ -259,7 +261,8 @@ export default function AnalyticsPanel({
                         {
                             key: 'gps',
                             label: 'GPS Module',
-                            sublabel: 'NMEA 0183',
+                            // Real status text e.g. "SEARCHING (0 sats)" or "OK" or "NO_DATA"
+                            sublabel: sensorStatus.gpsStatusText ?? 'Neo-6M',
                             icon: <MapPin className="w-4 h-4" />,
                             iconBg: 'bg-sky-100 text-sky-600',
                         },
@@ -288,22 +291,25 @@ export default function AnalyticsPanel({
                         const st = sensorStatus[key];
                         const isOk = st === 'ok';
                         const isError = st === 'error';
+                        const isSearching = st === 'searching';
                         return (
                             <div
                                 key={key}
                                 className={clsx(
                                     'relative flex flex-col gap-2 p-2.5 rounded-xl border transition-all duration-300',
-                                    isOk ? 'bg-emerald-50  border-emerald-200'
-                                        : isError ? 'bg-rose-50     border-rose-200'
-                                            : 'bg-slate-50    border-slate-200'
+                                    isOk ? 'bg-emerald-50 border-emerald-200'
+                                        : isError ? 'bg-rose-50    border-rose-200'
+                                            : isSearching ? 'bg-amber-50  border-amber-200'
+                                                : 'bg-slate-50   border-slate-200'
                                 )}
                             >
-                                {/* Status dot — pulse when connected */}
+                                {/* Status dot — pulse when connected or searching */}
                                 <span className={clsx(
                                     'absolute top-2 right-2 w-1.5 h-1.5 rounded-full',
                                     isOk ? 'bg-emerald-500 animate-pulse'
                                         : isError ? 'bg-rose-500'
-                                            : 'bg-slate-300'
+                                            : isSearching ? 'bg-amber-400 animate-pulse'
+                                                : 'bg-slate-300'
                                 )} />
 
                                 {/* Icon */}
@@ -314,25 +320,26 @@ export default function AnalyticsPanel({
                                 {/* Labels */}
                                 <div className="min-w-0">
                                     <p className="text-[10px] font-bold text-slate-700 leading-tight">{label}</p>
-                                    <p className="text-[9px] text-slate-400 leading-tight mt-0.5">{sublabel}</p>
+                                    <p className="text-[9px] text-slate-400 leading-tight mt-0.5 truncate" title={sublabel}>{sublabel}</p>
                                 </div>
 
                                 {/* Status badge */}
-                                <div className={clsx(
-                                    'flex items-center gap-1 mt-auto'
-                                )}>
+                                <div className="flex items-center gap-1 mt-auto">
                                     {isOk
                                         ? <CheckCircle2 className="w-3 h-3 text-emerald-500" />
                                         : isError
                                             ? <XCircle className="w-3 h-3 text-rose-500" />
-                                            : <AlertCircle className="w-3 h-3 text-slate-400" />}
+                                            : isSearching
+                                                ? <AlertCircle className="w-3 h-3 text-amber-500" />
+                                                : <AlertCircle className="w-3 h-3 text-slate-400" />}
                                     <span className={clsx(
                                         'text-[9px] font-black uppercase tracking-wider',
                                         isOk ? 'text-emerald-600'
                                             : isError ? 'text-rose-600'
-                                                : 'text-slate-400'
+                                                : isSearching ? 'text-amber-600'
+                                                    : 'text-slate-400'
                                     )}>
-                                        {isOk ? 'Connected' : isError ? 'Error' : 'Unknown'}
+                                        {isOk ? 'Fixed' : isError ? 'Error' : isSearching ? 'Searching' : 'Unknown'}
                                     </span>
                                 </div>
                             </div>

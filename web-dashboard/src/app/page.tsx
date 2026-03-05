@@ -338,6 +338,15 @@ export default function Dashboard() {
                 else if (s.includes('SOS')) mappedStatus = 'SOS';
                 else if (s.includes('NORMAL')) mappedStatus = 'NORMAL';
 
+                // Default location: used when GPS has no fix (Firebase sends 0,0).
+                // Keeps the map marker at the real base location instead of the ocean.
+                const DEFAULT_LAT = 16.50883086455525;
+                const DEFAULT_LNG = 80.65866194923865;
+
+                const rawLat = rtdbData.latitude ?? 0;
+                const rawLng = rtdbData.longitude ?? 0;
+                const hasGpsFix = rawLat !== 0 && rawLng !== 0;
+
                 const data: DeviceData = {
                     device_id: DEVICE_ID,
                     temperature: rtdbData.temperature || 0,
@@ -348,8 +357,8 @@ export default function Dashboard() {
                     packetLoss: rtdbData.system_status === 'OK' ? 0 : 10,
                     latency: 50,
                     location: {
-                        lat: rtdbData.latitude || 0,
-                        lng: rtdbData.longitude || 0
+                        lat: hasGpsFix ? rawLat : DEFAULT_LAT,
+                        lng: hasGpsFix ? rawLng : DEFAULT_LNG,
                     },
                     lastSeen: { toDate: () => new Date() } // Best effort local timestamp
                 };
@@ -357,10 +366,16 @@ export default function Dashboard() {
                 if (mappedStatus !== 'NORMAL' && mappedStatus !== 'OFFLINE') announceStatus(mappedStatus);
 
                 // Derive sensor health from RTDB fields
+                const rawGpsStatus: string = rtdbData.gps_status ?? '';
                 setSensorStatus({
-                    gps: rtdbData.gps_status === 'OK' ? 'ok'
-                        : rtdbData.gps_status === 'NO_SIGNAL' || rtdbData.gps_status === 'NO_FIX' ? 'error'
-                            : 'unknown',
+                    gps: rawGpsStatus === 'OK'
+                        ? 'ok'
+                        : rawGpsStatus === 'NO_DATA'
+                            ? 'error'
+                            : rawGpsStatus.startsWith('SEARCHING')
+                                ? 'searching'
+                                : 'unknown',
+                    gpsStatusText: rawGpsStatus || 'No data',
                     dht11: (rtdbData.temperature != null && rtdbData.temperature !== -999) ? 'ok'
                         : rtdbData.temperature === -999 ? 'error'
                             : 'unknown',
