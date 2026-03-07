@@ -1,4 +1,4 @@
-# Sustainable Firefighter Monitoring System (SFMS)
+# Sustainable Firefighter Monitoring Device (SFMD)
 
 An IoT-based wearable safety device that continuously monitors a firefighter's physical condition, movement, and location in real time, and presents this data on a centralized web dashboard for commanders or monitoring personnel.
 
@@ -36,7 +36,7 @@ An IoT-based wearable safety device that continuously monitors a firefighter's p
 
 ## 1. Project Overview
 
-The **Sustainable Firefighter Monitoring System (SFMS)** is a real-time IoT safety solution for firefighters. A wearable device worn by the firefighter collects sensor data (motion, temperature, GPS location) and transmits it over Wi-Fi to a Firebase backend. A web dashboard hosted by fire commanders provides instant situational awareness, showing the firefighter's current status, location on a live map, environmental data, and a history of all alerts and events.
+The **Sustainable Firefighter Monitoring Device (SFMD)** is a real-time IoT safety solution for firefighters. A wearable device worn by the firefighter collects sensor data (motion, temperature, GPS location) and transmits it over Wi-Fi to a Firebase backend. A web dashboard hosted by fire commanders provides instant situational awareness, showing the firefighter's current status, location on a live map, environmental data, and a history of all alerts and events.
 
 **Key capabilities:**
 
@@ -45,7 +45,6 @@ The **Sustainable Firefighter Monitoring System (SFMS)** is a real-time IoT safe
 - Live GPS tracking on an interactive map
 - Color-coded status indicators with voice alerts on the dashboard
 - Historical data and analytics (temperature trend, movement timeline, status distribution)
-- Solar-assisted power for extended field operation
 
 ---
 
@@ -58,7 +57,7 @@ The **Sustainable Firefighter Monitoring System (SFMS)** is a real-time IoT safe
 │  [MPU-6050]  [DHT11]  [Neo-6M GPS]      │
 │  [SOS Btn]   [Buzzer] [LED]             │
 │              [ESP32]                    │
-│  [Li-ion Battery + Solar + TP4056]      │
+│  [Li-ion Battery]                       │
 └───────────────────┬─────────────────────┘
                     │  Wi-Fi (HTTPS / JSON)
                     │  PUT to Firebase RTDB
@@ -97,8 +96,6 @@ The **Sustainable Firefighter Monitoring System (SFMS)** is a real-time IoT safe
 | 6 | **Buzzer** | Local audible alert |
 | 7 | **RGB / Status LED** | Visual status indicator |
 | 8 | **Li-ion Battery** | Primary power source |
-| 9 | **Solar Panel** | Supplementary/charging power |
-| 10 | **TP4056 Module** | Li-ion battery charge controller |
 
 ---
 
@@ -125,22 +122,16 @@ The **Sustainable Firefighter Monitoring System (SFMS)** is a real-time IoT safe
 | **GND** | Buzzer (−) | Ground |
 | **3.3 V / 5 V** | RGB LED VCC | Via suitable current-limiting resistors |
 | **GND** | RGB LED GND | Ground |
-| **BAT+/BAT−** | TP4056 BAT output | Li-ion battery terminals |
-| **IN+/IN−** | TP4056 IN | Solar panel / USB 5 V input |
-| **OUT+** | ESP32 VIN (or 5 V rail) | Regulated battery output to ESP32 |
+| **Battery +** | ESP32 VIN (or 5 V rail) | Power input to ESP32 |
+| **Battery −** | ESP32 GND | Ground |
 
 > **Note:** The MPU-6050 operates at I2C address `0x68`. If the AD0 pin is pulled HIGH, the address becomes `0x69`.
 
 ### Wiring Diagram (Textual)
 
 ```
- Solar Panel ──► TP4056 (IN+/IN−)
-                    │
-                    ▼
-              Li-ion Battery (BAT+/BAT−)
-                    │
-                    ▼
-              TP4056 (OUT+) ──► ESP32 VIN
+              Li-ion Battery (+) ──► ESP32 VIN
+              Li-ion Battery (−) ──► ESP32 GND
 
  ESP32 3.3V ──► MPU-6050 VCC
  ESP32 GND  ──► MPU-6050 GND
@@ -293,7 +284,7 @@ The web dashboard is a Next.js application that connects to Firebase Realtime Da
 | **Status Distribution** | Donut chart and legend showing % breakdown of Normal / Warning / Emergency / SOS states. |
 
 #### Header
-- System name **SFMS Command Center**
+- System name **SFMD Command Center**
 - Signal quality pill and battery pill
 - Live / Offline indicator with Device ID
 - **Run Simulation** button — toggles a built-in mock data generator for demonstrations without real hardware
@@ -410,7 +401,7 @@ firefighter-monitoring-device/
 ```
 Connecting to WiFi....
 WiFi Connected
-SFMS System Started
+SFMD System Started
 
 ==== FIREFIGHTER REPORT ====
 State: NORMAL
@@ -575,12 +566,10 @@ The device continues local alerts (buzzer + LED) even when the Wi-Fi connection 
 
 | Component | Role |
 |-----------|------|
-| **Solar Panel** | Charges the Li-ion battery via the TP4056 module during daylight |
 | **Li-ion Battery** | Primary power source, provides continuous power |
-| **TP4056 Module** | Battery charge controller — manages charging current, overvoltage and overdischarge protection |
-| **ESP32** | Powered from the TP4056 regulated output (3.7 V–4.2 V battery → 3.3 V ESP32 via onboard LDO) |
+| **ESP32** | Powered directly from the battery (3.7 V–4.2 V battery → 3.3 V ESP32 via onboard LDO) |
 
-The solar panel acts as a supplementary power source. In scenarios where the firefighter is exposed to ambient light, it extends battery life and enables longer missions without recharging.
+The Li-ion battery is the sole power source for the device during operations, ensuring reliable and continuous functionality.
 
 ---
 

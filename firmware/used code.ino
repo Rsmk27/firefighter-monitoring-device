@@ -11,14 +11,15 @@ const char* ssid = "The";
 const char* password = "Rsmk2711";
 
 String firebaseHost = "https://firefighter-rtdb.firebaseio.com/";
-String firebaseAuth = "YOUR_FIREBASE_SECRET";
+String firebaseAuth = "YOUR_FIREBASE_SECRET";  // Leave empty if Firebase rules allow open read/write, or add your secret here
 
 // ================= DEFINITIONS =================
 #define MPU_ADDR    0x68
 #define DHTPIN      4
 #define DHTTYPE     DHT11
-#define SOS_BUTTON  12     // Built-in BOOT push button on ESP32 (GPIO 0, Active LOW)
-#define BUZZER      13
+#define SOS_BUTTON      14   // SOS button input  — GPIO14 (INPUT_PULLUP, Active LOW)
+#define SOS_BUTTON_GND  27   // SOS button "GND"  — GPIO27 driven LOW to simulate ground
+#define BUZZER          13
 // Neo-6M GPS wiring:
 //   ESP32 GPIO16 (GPS_RX)  <---  Neo-6M TX pin  (ESP32 receives NMEA from GPS)
 //   ESP32 GPIO17 (GPS_TX)  --->  Neo-6M RX pin  (optional, only needed for config)
@@ -273,7 +274,11 @@ void setup() {
   dht.begin();
   gpsSerial.begin(9600, SERIAL_8N1, GPS_RX, GPS_TX);
 
+  // SOS button: GPIO27 = simulated GND, GPIO14 = input
+  pinMode(SOS_BUTTON_GND, OUTPUT);
+  digitalWrite(SOS_BUTTON_GND, LOW);   // Hold LOW permanently → acts as GND
   pinMode(SOS_BUTTON, INPUT_PULLUP);
+
   pinMode(BUZZER, OUTPUT);
   digitalWrite(BUZZER, LOW);
 

@@ -1,8 +1,8 @@
-Sustainable Firefighter Monitoring System (SFMS)
+Sustainable Firefighter Monitoring Device (SFMD)
 1. Product Overview
 1.1 Purpose
 
-The Sustainable Firefighter Monitoring System (SFMS) is an IoT-based safety solution designed to continuously monitor a firefighter’s physical condition, movement, and location in real time, and present this data on a centralized web dashboard for commanders or monitoring personnel.
+The Sustainable Firefighter Monitoring Device (SFMD) is an IoT-based safety solution designed to continuously monitor a firefighter’s physical condition, movement, and location in real time, and present this data on a centralized web dashboard for commanders or monitoring personnel.
 
 The system aims to:
 
@@ -200,7 +200,7 @@ Maintain historical records
 5.2 Functional Sections of the Web Interface
 5.2.1 Header Section
 
-System name (SFMS)
+System name (SFMD)
 
 Firefighter / Device ID
 
@@ -301,4 +301,4 @@ System demonstrates end-to-end integration
 
 9. One-Line System Summary (Strong)
 
-SFMS is a scalable IoT-based firefighter safety system that integrates wearable sensing, real-time monitoring, live location tracking, and cloud-backed visualization to improve emergency response and situational awareness.
+SFMD is a scalable IoT-based firefighter safety system that integrates wearable sensing, real-time monitoring, live location tracking, and cloud-backed visualization to improve emergency response and situational awareness.

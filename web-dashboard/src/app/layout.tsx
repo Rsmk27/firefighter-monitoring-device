@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SFMS Dashboard",
-  description: "Sustainable Firefighter Monitoring System Dashboard",
+  title: "SFMD Dashboard",
+  description: "Sustainable Firefighter Monitoring Device Dashboard",
 };
 
 export default function RootLayout({
