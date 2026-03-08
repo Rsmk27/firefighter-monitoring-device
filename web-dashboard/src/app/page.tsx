@@ -151,8 +151,6 @@ export default function Dashboard() {
     const [useMock, setUseMock] = useState(false);
     const [trail, setTrail] = useState<[number, number][]>([]);
     const [secondsOffline, setSecondsOffline] = useState<number>(0);
-    const [smsSent, setSmsSent] = useState(false);           // UI feedback flag
-    const [smsError, setSmsError] = useState<string | null>(null);
     const [sensorStatus, setSensorStatus] = useState<SensorStatus>({
         gps: 'unknown',
         dht11: 'unknown',
@@ -169,9 +167,6 @@ export default function Dashboard() {
     const lastKnownData = useRef<DeviceData | null>(null);
     // Track when the component first mounted to detect never-connected timeout
     const mountTime = useRef<Date>(new Date());
-    // Track the last SOS-alerted session so we don't spam on every re-render
-    // Reset to false once device leaves SOS, so re-activation fires a fresh SMS.
-    const sosAlertFired = useRef<boolean>(false);
 
     // Analytics state
     const [tempHistory, setTempHistory] = useState<{ time: string; temp: number }[]>([]);
@@ -198,50 +193,6 @@ export default function Dashboard() {
                 (s.name === 'SOS' && status === 'SOS');
             return match ? { ...s, value: s.value + 1 } : s;
         }));
-    }, []);
-
-    // ── SOS SMS Alert ────────────────────────────────────────────────────────
-    const sendSosAlert = useCallback(async (data: DeviceData) => {
-        // Guard: only fire once per SOS activation
-        if (sosAlertFired.current) return;
-        sosAlertFired.current = true;
-
-        setSmsError(null);
-        setSmsSent(false);
-
-        try {
-            const res = await fetch('/api/send-sms', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    unitId: data.device_id,
-                    unitName: `Unit ${data.device_id}`,
-                    latitude: data.location?.lat,
-                    longitude: data.location?.lng,
-                    timestamp: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
-                }),
-            });
-
-            const json = await res.json();
-
-            if (json.rateLimited) {
-                console.warn('[SOS SMS] Rate-limited:', json.error);
-                // Don't surface rate-limit as an error — SMS was already sent recently
-                setSmsSent(true);
-            } else if (json.success) {
-                console.log(`[SOS SMS] ${json.message}`);
-                setSmsSent(true);
-            } else {
-                console.error('[SOS SMS] Failed:', json.error);
-                setSmsError(json.error ?? 'SMS failed to send.');
-                // Allow retry on next re-activation
-                sosAlertFired.current = false;
-            }
-        } catch (err: any) {
-            console.error('[SOS SMS] Network error:', err);
-            setSmsError('Network error — SMS may not have been sent.');
-            sosAlertFired.current = false;
-        }
     }, []);
 
     // Voice alert
@@ -278,8 +229,8 @@ export default function Dashboard() {
         ]);
 
         if (useMock) {
-            let mockLat = 16.508908144342104;
-            let mockLng = 80.65868082784321;
+            let mockLat = 16.50905362153323;
+            let mockLng = 80.65858928671912;
             const initialData = generateMockData(mockLat, mockLng);
             setDeviceData(initialData);
             setAlerts(generateMockAlerts());
@@ -299,16 +250,6 @@ export default function Dashboard() {
                 if (newData.status !== 'NORMAL') announceStatus(newData.status);
                 // In mock mode all sensors are OK
                 setSensorStatus({ gps: 'ok', dht11: 'ok', mpu6050: 'ok', wifi: 'ok' });
-
-                // SOS → fire SMS alert once per activation
-                if (newData.status === 'SOS') {
-                    sendSosAlert(newData);
-                } else {
-                    // Unit left SOS — reset so re-activation sends a new SMS
-                    sosAlertFired.current = false;
-                    setSmsSent(false);
-                    setSmsError(null);
-                }
 
                 if (Math.random() > 0.8) {
                     const msg = newData.status === 'EMERGENCY' ? 'Critical Vitals / Sensor Limit' : 'Status Change Detected';
@@ -340,8 +281,8 @@ export default function Dashboard() {
 
                 // Default location: used when GPS has no fix (Firebase sends 0,0).
                 // Keeps the map marker at the real base location instead of the ocean.
-                const DEFAULT_LAT = 16.50883086455525;
-                const DEFAULT_LNG = 80.65866194923865;
+                const DEFAULT_LAT = 16.50905362153323;
+                const DEFAULT_LNG = 80.65858928671912;
 
                 const rawLat = rtdbData.latitude ?? 0;
                 const rawLng = rtdbData.longitude ?? 0;
@@ -384,16 +325,6 @@ export default function Dashboard() {
                         : rtdbData.system_status != null ? 'error'
                             : 'unknown',
                 });
-
-                // SOS → fire SMS alert once per activation
-                if (mappedStatus === 'SOS') {
-                    sendSosAlert(data);
-                } else {
-                    // Unit left SOS — reset so re-activation sends a new SMS
-                    sosAlertFired.current = false;
-                    setSmsSent(false);
-                    setSmsError(null);
-                }
 
                 setDeviceData(data);
                 lastKnownData.current = data; // Always cache last good data
@@ -492,21 +423,6 @@ export default function Dashboard() {
 
     return (
         <main className="min-h-screen w-full bg-slate-50 text-slate-900 font-sans selection:bg-indigo-500/30 flex flex-col">
-
-
-            {/* ── SMS STATUS BANNER ─────────────────────────────────────────── */}
-            {smsSent && displayStatus === 'SOS' && (
-                <div className="flex-none bg-emerald-600 text-white text-xs font-bold px-4 py-1.5 flex items-center justify-center gap-2 z-30">
-                    <span>✅</span>
-                    <span>SOS SMS alert sent to all commanders.</span>
-                </div>
-            )}
-            {smsError && displayStatus === 'SOS' && (
-                <div className="flex-none bg-amber-500 text-white text-xs font-bold px-4 py-1.5 flex items-center justify-center gap-2 z-30">
-                    <span className="animate-pulse">⚠</span>
-                    <span>SMS alert failed: {smsError}</span>
-                </div>
-            )}
 
             {/* Background Ambience */}
             <div className="fixed inset-0 pointer-events-none z-0">
