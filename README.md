@@ -92,7 +92,7 @@ The **Sustainable Firefighter Monitoring Device (SFMD)** is a real-time IoT safe
 | 2 | **MPU-6050** | 3-axis accelerometer & gyroscope — movement and fall detection |
 | 3 | **DHT11** | Ambient temperature sensor |
 | 4 | **Neo-6M GPS Module** | Latitude/longitude tracking |
-| 5 | **Built-in Push Button** | Built-in push button of ESP32 used as manual SOS trigger |
+| 5 | **Push Button (Momentary)** | External push button used as manual SOS trigger (two-GPIO wiring: input on GPIO14, simulated GND on GPIO27) |
 | 6 | **Buzzer** | Local audible alert |
 | 7 | **RGB / Status LED** | Visual status indicator |
 | 8 | **Li-ion Battery** | Primary power source |
@@ -116,10 +116,9 @@ The **Sustainable Firefighter Monitoring Device (SFMD)** is a real-time IoT safe
 | **GPIO 17** (TX1) | Neo-6M GPS RX | Hardware Serial 1 TX |
 | **3.3 V** | Neo-6M VCC | Power (some modules need 5 V — check datasheet) |
 | **GND** | Neo-6M GND | Ground |
-| **GPIO 13** | SOS Push Button | Active LOW; internal pull-up enabled |
-| **GND** | Push Button (other pin) | Ground return |
-| **GPIO 12** | Buzzer (+) | Active HIGH |
-| **GND** | Buzzer (−) | Ground |
+| **GPIO 14** | SOS Push Button (signal pin) | Active LOW; internal pull-up (`INPUT_PULLUP`) enabled |
+| **GPIO 27** | SOS Push Button (GND pin) | Driven permanently LOW — acts as the button's ground leg (no physical GND wire needed) |
+| **GPIO 13** | Buzzer (+) | Active HIGH |
 | **3.3 V / 5 V** | RGB LED VCC | Via suitable current-limiting resistors |
 | **GND** | RGB LED GND | Ground |
 | **Battery +** | ESP32 VIN (or 5 V rail) | Power input to ESP32 |
@@ -147,9 +146,9 @@ The **Sustainable Firefighter Monitoring Device (SFMD)** is a real-time IoT safe
  ESP32 3.3V     ──► Neo-6M VCC
  ESP32 GND      ──► Neo-6M GND
 
- ESP32 G13 ──► Push Button ──► GND  (INPUT_PULLUP)
+ ESP32 G14 ──► Push Button ──► ESP32 G27  (G27 held LOW = simulated GND, INPUT_PULLUP on G14)
 
- ESP32 G12 ──► Buzzer (+)
+ ESP32 G13 ──► Buzzer (+)
  ESP32 GND  ──► Buzzer (−)
 ```
 
@@ -189,11 +188,11 @@ The MPU-6050 provides raw 16-bit accelerometer data on the X, Y, Z axes. The fir
 
 | Duration of No Movement | State Assigned |
 |-------------------------|---------------|
-| < 5 seconds | MOVING (normal) |
-| 5 – 14 seconds | WARNING |
-| ≥ 15 seconds | EMERGENCY |
+| < 10 seconds | MOVING (normal) |
+| 10 – 29 seconds | WARNING |
+| ≥ 30 seconds | EMERGENCY |
 
-> The threshold of `0.03 g` is intentionally sensitive to detect micro-movements such as breathing or slight weight shifts.
+> The threshold of `0.13 g` filters out sensor noise while still catching genuine stillness. Values below this deviation from 1 g are treated as "no movement".
 
 ### 6.3 Temperature Monitoring Logic
 
@@ -201,16 +200,22 @@ The DHT11 reads ambient temperature each loop cycle.
 
 | Temperature | State Assigned |
 |-------------|---------------|
-| ≤ 50 °C | NORMAL (or whatever movement/SOS state applies) |
-| > 50 °C | EMERGENCY (HIGH TEMP) |
+| < 25 °C | NORMAL — buzzer silent |
+| 25 – 30 °C | NORMAL — 1 ambient beep/min (awareness) |
+| 30 – 35 °C | NORMAL — 2 ambient beeps/min (awareness) |
+| 35 – 40 °C | NORMAL — 3 ambient beeps/min (awareness) |
+| > 40 °C | Escalates to at least **WARNING** (inactivity timers may push to EMERGENCY) |
 
 If `dht.readTemperature()` returns `NaN`, `dhtStatus` is set to `"ERROR"` and `systemStatus` to `"SENSOR_FAILURE"`.
 
 ### 6.4 SOS Logic
 
-- We are using the built-in push button of the ESP32 as the SOS button (configured on **GPIO 13** with the internal pull-up resistor enabled).
-- When pressed, the pin reads `LOW`.
-- This immediately overrides all other states and sets `deviceState = "SOS"`.
+- An external push button is used as the SOS trigger, wired across **two GPIO pins**:
+  - **GPIO 14** — signal input, configured as `INPUT_PULLUP` (active LOW).
+  - **GPIO 27** — driven `LOW` permanently in firmware, acting as the button's ground leg. This avoids routing a wire to a physical GND pin on the ESP32 and simplifies the wiring harness.
+- When the button is pressed, GPIO 14 reads `LOW` (pulled to GPIO 27's forced LOW).
+- Each press **toggles** the SOS state: first press activates SOS, second press deactivates it (debounced at 200 ms).
+- While active, SOS overrides all other states and sets `deviceState = "SOS"`.
 
 ### 6.5 Local Alerts
 
