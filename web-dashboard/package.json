@@ -10,6 +10,7 @@
     "postinstall": "node -e \"const{cpSync}=require('fs');try{cpSync('node_modules/maplibre-gl/dist/maplibre-gl-csp-worker.js','public/maplibre-gl-csp-worker.js');}catch(e){}\""
   },
   "dependencies": {
+    "@vercel/analytics": "^2.0.0",
     "autoprefixer": "^10.4.24",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
