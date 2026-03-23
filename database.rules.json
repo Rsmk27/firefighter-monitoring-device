@@ -5,13 +5,26 @@
         "firefighters": {
             "$unitId": {
                 ".read": "auth != null",
-                ".write": "auth != null"
+                ".write": "auth != null",
+                ".validate": "newData.hasChildren(['temperature', 'total_acc', 'movement', 'status', 'mpu_status', 'dht_status', 'gps_status', 'system_status', 'sos_active', 'latitude', 'longitude', 'timestamp'])",
+                "temperature": { ".validate": "newData.isNumber()" },
+                "total_acc": { ".validate": "newData.isNumber()" },
+                "movement": { ".validate": "newData.isString()" },
+                "status": { ".validate": "newData.isString()" },
+                "mpu_status": { ".validate": "newData.isString()" },
+                "dht_status": { ".validate": "newData.isString()" },
+                "gps_status": { ".validate": "newData.isString()" },
+                "system_status": { ".validate": "newData.isString()" },
+                "sos_active": { ".validate": "newData.isBoolean()" },
+                "latitude": { ".validate": "newData.isNumber()" },
+                "longitude": { ".validate": "newData.isNumber()" },
+                "timestamp": { ".validate": "newData.isNumber() || newData.isString()" },
+                "$other": { ".validate": false }
             }
         },
         "sos_alerts": {
             "$unitId": {
                 "latest": {
-                    // Cloud Function writes back the smsStatus field — allow server writes
                     ".read": "auth != null",
                     ".write": "auth != null"
                 },
