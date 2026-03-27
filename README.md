@@ -94,8 +94,7 @@ The **Sustainable Firefighter Monitoring Device (SFMD)** is a real-time IoT safe
 | 4 | **Neo-6M GPS Module** | Latitude/longitude tracking |
 | 5 | **Push Button (Momentary)** | External push button used as manual SOS trigger (two-GPIO wiring: input on GPIO14, simulated GND on GPIO27) |
 | 6 | **Buzzer** | Local audible alert |
-| 7 | **RGB / Status LED** | Visual status indicator |
-| 8 | **Li-ion Battery** | Primary power source |
+| 7 | **Battery** |power source |
 
 ---
 
@@ -129,8 +128,8 @@ The **Sustainable Firefighter Monitoring Device (SFMD)** is a real-time IoT safe
 ### Wiring Diagram (Textual)
 
 ```
-              Li-ion Battery (+) ──► ESP32 VIN
-              Li-ion Battery (−) ──► ESP32 GND
+              Battery (+) ──► ESP32 VIN
+              Battery (−) ──► ESP32 GND
 
  ESP32 3.3V ──► MPU-6050 VCC
  ESP32 GND  ──► MPU-6050 GND
@@ -158,7 +157,7 @@ The **Sustainable Firefighter Monitoring Device (SFMD)** is a real-time IoT safe
 
 The repository includes the visual circuit diagram for the **ESP32**:
 
-![SFMD with ESP 32](SFMD%20with%20ESP%2032.png)
+![SFMD circuit](SFMD%20circuit.jpeg)
 
 ---
 
@@ -168,13 +167,13 @@ The repository includes the visual circuit diagram for the **ESP32**:
 
 The firmware operates as a state machine with the following states:
 
-| State | Condition | LED / Buzzer Behavior |
+| State | Condition | Buzzer Behavior |
 |-------|-----------|----------------------|
 | **STARTUP** | Device initializing | — |
-| **NORMAL** | All parameters within safe limits | Status LED on; buzzer off |
-| **WARNING** | Potential danger detected | Alert LED on; buzzer intermittent (1 Hz) |
-| **EMERGENCY** | Critical condition detected | Alert LED on; buzzer continuous |
-| **SOS** | Manual SOS button pressed | Alert LED on; buzzer continuous; overrides all other states |
+| **NORMAL** | All parameters within safe limits | buzzer off |
+| **WARNING** | Potential danger detected | buzzer intermittent (1 Hz) |
+| **EMERGENCY** | Critical condition detected | buzzer continuous |
+| **SOS** | Manual SOS button pressed | buzzer continuous; overrides all other states |
 
 ### 6.2 Movement Detection Logic
 
@@ -217,15 +216,8 @@ If `dht.readTemperature()` returns `NaN`, `dhtStatus` is set to `"ERROR"` and `s
 - Each press **toggles** the SOS state: first press activates SOS, second press deactivates it (debounced at 200 ms).
 - While active, SOS overrides all other states and sets `deviceState = "SOS"`.
 
-### 6.5 Local Alerts
 
-| State | Buzzer | LED |
-|-------|--------|-----|
-| NORMAL | OFF | Status LED ON |
-| WARNING | Intermittent (toggles every 1 second) | Alert LED ON |
-| EMERGENCY / SOS | Continuous ON | Alert LED ON |
-
-### 6.6 Data Transmission
+### 6.5 Data Transmission
 
 Every loop iteration (no blocking delay), the firmware calls `sendToFirebase()` which:
 
@@ -458,17 +450,17 @@ Firebase Response: 200
    FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
    ```
 
-4. Run the development server:
-   ```bash
-   npm run dev
-   ```
-   Open [http://localhost:3000](http://localhost:3000) in your browser.
-
-5. To build for production:
+4.To build for production:
    ```bash
    npm run build
    npm start
    ```
+
+5.  Run the development server:
+   ```bash
+   npm run dev
+   ```
+   Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 > **Demo mode:** Without any Firebase configuration or hardware, click the **Run Simulation** button on the dashboard header to see a fully-functional mock data feed with random state changes, GPS movement, and alerts.
 
